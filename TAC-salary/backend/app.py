@@ -29,6 +29,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+try:
+    from payroll_engines import apply_country_engine
+except ModuleNotFoundError:  # Supports importlib-based tests from project root.
+    from backend.payroll_engines import apply_country_engine
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "database"
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
@@ -305,6 +310,16 @@ def money(value: object) -> float:
 
 def clean_text(value: object) -> str:
     return str(value or "").strip()
+
+
+def parse_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, ""):
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
 
 
 def get_nested(record: dict, path: str, default: object = "") -> object:
@@ -1243,6 +1258,40 @@ def latest_import_run_for_batch(batch_id: str) -> dict | None:
     return sorted(runs, key=lambda record: record.get("imported_at", ""), reverse=True)[0]
 
 
+def parameter_applies_to_record(parameter: dict, record: dict) -> bool:
+    if parameter.get("status") != "active":
+        return False
+    if parameter.get("country_code") != record.get("country_code"):
+        return False
+    parameter_entity = clean_text(parameter.get("entity_id"))
+    if parameter_entity and parameter_entity != clean_text(record.get("entity_id")):
+        return False
+    parameter_rule = clean_text(parameter.get("rule_version_id"))
+    record_rule = clean_text(record.get("rule_version_id"))
+    if parameter_rule and record_rule and parameter_rule != record_rule:
+        return False
+    payroll_month = clean_text(record.get("payroll_month"))
+    effective_start = clean_text(parameter.get("effective_start_date"))
+    effective_end = clean_text(parameter.get("effective_end_date"))
+    if effective_start and effective_start[:7] > payroll_month:
+        return False
+    if effective_end and effective_end[:7] < payroll_month:
+        return False
+    if record.get("country_code") == "CN":
+        parameter_city = clean_text(parameter.get("city_code")).upper().replace("'", "")
+        record_city = clean_text(record.get("cn_fields", {}).get("city_code") or record.get("cn_fields", {}).get("social_insurance_city") or record.get("cn_fields", {}).get("work_city")).upper().replace("'", "")
+        if record_city == "XI'AN":
+            record_city = "XIAN"
+        if parameter_city and record_city and parameter_city != record_city:
+            return False
+    return True
+
+
+def active_parameters_for_record(record: dict) -> list[dict]:
+    parameters = [parameter for parameter in read_json(PAYROLL_PARAMETERS_FILE) if parameter_applies_to_record(parameter, record)]
+    return sorted(parameters, key=lambda parameter: (clean_text(parameter.get("effective_start_date")), clean_text(parameter.get("updated_at"))), reverse=True)
+
+
 def country_empty_deductions(country_code: str) -> dict:
     if country_code == "SG":
         return {"cpf_employee": 0.0, "other_deduction": 0.0, "income_tax": 0.0}
@@ -1350,8 +1399,10 @@ def create_payroll_row(batch: dict, profile: dict) -> dict:
         }
     elif country_code == "SG":
         record["sg_fields"] = {
-            "cpf_applicable": bool(profile.get("cpf_applicable", True)),
+            "cpf_applicable": parse_bool(profile.get("cpf_applicable", True), True),
             "cpf_input_mode": clean_text(profile.get("cpf_input_mode") or "manual"),
+            "cpf_ordinary_wage": money(profile.get("cpf_ordinary_wage", 0)),
+            "cpf_additional_wage": money(profile.get("cpf_additional_wage", 0)),
             "cpf_employee": money(profile.get("cpf_employee", 0)),
             "cpf_employer": money(profile.get("cpf_employer", 0)),
             "cpf_manual_reason": clean_text(profile.get("cpf_manual_reason") or "Manual CPF entry pending validation"),
@@ -1431,6 +1482,15 @@ def calculate_payroll_row(record: dict) -> dict:
     else:
         messages.append(f"Unsupported salary rule_type: {rule_type}.")
         record["status"] = "validation_error"
+    record["earnings"] = {key: money(value) for key, value in earnings.items()}
+    record["deductions"] = {key: money(value) for key, value in deductions.items()}
+    record["employer_costs"] = {key: money(value) for key, value in employer_costs.items()}
+    record["calculation_basis"] = calculation_basis
+    record["calculation_messages"] = list(record.get("calculation_messages") or []) + messages
+    record = apply_country_engine(record, active_parameters_for_record(record))
+    earnings = dict(record.get("earnings") or {})
+    deductions = dict(record.get("deductions") or {})
+    employer_costs = dict(record.get("employer_costs") or {})
     gross_pay = round(sum(money(earnings.get(field, 0)) for field in EARNING_FIELDS), 2)
     deduction_total = round(sum(money(deductions.get(field, 0)) for field in DEDUCTION_FIELDS), 2)
     manual_adjustments_total = round(sum(money(adjustment.get("amount", 0)) for adjustment in adjustments), 2)
@@ -1438,8 +1498,6 @@ def calculate_payroll_row(record: dict) -> dict:
     record["earnings"] = {key: money(value) for key, value in earnings.items()}
     record["deductions"] = {key: money(value) for key, value in deductions.items()}
     record["employer_costs"] = {key: money(value) for key, value in employer_costs.items()}
-    record["calculation_basis"] = calculation_basis
-    record["calculation_messages"] = list(record.get("calculation_messages") or []) + messages
     record["manual_adjustments_total"] = manual_adjustments_total
     record["gross_pay"] = gross_pay
     record["deduction_total"] = deduction_total
@@ -1554,7 +1612,7 @@ def update_payroll_record(record_id: str, payload: dict) -> dict:
                 if section in {"earnings", "deductions", "employer_costs"} or clean_key in {"base_rate", "hourly_rate", "daily_rate", "standard_hours_per_month", "standard_days_per_month", "actual_work_hours", "actual_work_days"}:
                     current[clean_key] = money(value)
                 elif clean_key == "overtime_eligible":
-                    current[clean_key] = bool(value)
+                    current[clean_key] = parse_bool(value)
                 else:
                     current[clean_key] = clean_text(value)
             record[section] = current

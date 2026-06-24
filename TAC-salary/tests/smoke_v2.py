@@ -79,8 +79,10 @@ def create_profile(app, country: str, entity_id: str, employee_id: str, city_cod
         "status": "active",
         "user": "smoke_test",
     }
+    if country == "JP":
+        payload.update({"overtime_hours": 10, "late_night_hours": 2, "holiday_work_hours": 1})
     if country == "SG":
-        payload.update({"cpf_employee": 100, "cpf_employer": 120})
+        payload.update({"cpf_input_mode": "parameter_assisted", "cpf_ordinary_wage": 10000, "cpf_employee": 100, "cpf_employer": 120})
     if country == "CN":
         payload.update({"city_code": city_code or "SHANGHAI", "social_insurance_employee": 90, "housing_fund_employee": 80, "individual_income_tax": 70, "social_insurance_employer": 150, "housing_fund_employer": 110})
     record = app.normalize_salary_master(payload)
@@ -99,8 +101,11 @@ def main() -> None:
         create_profile(app, "CN", "ENT-0005", "EMP-CN-001", "SHANGHAI")
 
         jp_batch = app.create_batch({"country_code": "JP", "entity_id": "ENT-0001", "payroll_month": "2099-01", "user": "smoke_test"})
-        app.create_batch({"country_code": "SG", "entity_id": "ENT-0002", "payroll_month": "2099-01", "user": "smoke_test"})
-        app.create_batch({"country_code": "CN", "entity_id": "ENT-0005", "payroll_month": "2099-01", "user": "smoke_test"})
+        sg_batch = app.create_batch({"country_code": "SG", "entity_id": "ENT-0002", "payroll_month": "2099-01", "user": "smoke_test"})
+        cn_batch = app.create_batch({"country_code": "CN", "entity_id": "ENT-0005", "payroll_month": "2099-01", "user": "smoke_test"})
+        app.create_parameter({"country_code": "JP", "entity_id": "ENT-0001", "effective_start_date": "2099-01-01", "parameter_type": "jp_overtime_statutory", "status": "active", "values": {"standard_hours_per_month": 160, "overtime_multiplier": 1.25, "late_night_multiplier": 1.5, "holiday_work_multiplier": 1.35, "health_insurance_employee_rate": 0.05, "health_insurance_employer_rate": 0.05}, "user": "smoke_test"})
+        app.create_parameter({"country_code": "SG", "entity_id": "ENT-0002", "effective_start_date": "2099-01-01", "parameter_type": "sg_cpf", "status": "active", "values": {"cpf_employee_rate": 0.08, "cpf_employer_rate": 0.17, "ordinary_wage_ceiling": 20000}, "user": "smoke_test"})
+        app.create_parameter({"country_code": "CN", "entity_id": "ENT-0005", "city_code": "SHANGHAI", "effective_start_date": "2099-01-01", "parameter_type": "cn_city_social_housing_iit", "status": "active", "values": {"social_insurance_employee_rate": 0.10, "social_insurance_employer_rate": 0.20, "housing_fund_employee_rate": 0.07, "housing_fund_employer_rate": 0.07, "iit_monthly_threshold": 5000, "iit_rate": 0.03}, "user": "smoke_test"})
 
         loaded = app.load_employees_for_batch(jp_batch["batch_id"], {"user": "smoke_test", "allow_salary_master_fallback": True})
         assert loaded["loaded_count"] == 1, loaded
