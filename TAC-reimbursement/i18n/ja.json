@@ -1,0 +1,15 @@
+{
+  "app.title": "TAC 経費精算",
+  "app.subtitle": "日本従業員向け経費精算セルフサービス",
+  "language.zh": "中文",
+  "language.ja": "日本語",
+  "language.en": "English",
+  "nav.portal": "Portalへ戻る",
+  "nav.portal_tooltip": "TACAI Portalへ戻る",
+  "nav.dashboard": "ダッシュボード",
+  "nav.claim_new": "経費申請",
+  "nav.claims": "申請一覧",
+  "nav.finance_review": "財務承認",
+  "nav.finance_report": "月次レポート",
+  "nav.audit_logs": "監査ログ"
+}

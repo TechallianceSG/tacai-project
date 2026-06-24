@@ -1,0 +1,95 @@
+# macOS / editor
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+
+# Local Claude / MCP configuration (machine-specific)
+.claude/
+.mcp.json
+
+# Local runtime logs and process files
+.lan-logs/
+*.log
+*.pid
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+
+# Node / frontend generated files
+node_modules/
+dist/
+build/
+.next/
+.cache/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+!*env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# Local JSON databases and runtime business data
+# These modules currently store HR/payroll/reimbursement/customer/vendor data locally.
+# Keep real data out of GitHub; commit only schemas/docs/examples.
+**/database/*.json
+!**/database/*.example.json
+!**/database/README.md
+**/database/backups/
+**/database/sessions/
+
+# Project memory and historical archives may contain operational/private notes
+memory/
+**/memory/
+**/archive/
+
+# Uploaded/generated business documents and attachments
+**/attachments/
+**/payslips/
+**/outputs/
+**/storage/
+**/expensebill/
+**/docs/empdoc/
+**/docs/onboarding/
+**/sample-files/
+
+# Binary/office documents and personal/business files
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+*.csv
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.tif
+*.tiff
+*.heic
+
+# Local backup/temp files
+*.bak
+*.tmp
+*.swp
+*~

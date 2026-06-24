@@ -1,0 +1,12 @@
+{
+  "app.title": "Customer Billing",
+  "app.subtitle": "Billing & Accounts Receivable",
+  "nav.dashboard": "Dashboard",
+  "nav.billings": "Billing List",
+  "nav.new_billing": "New Billing",
+  "nav.customers": "Customers",
+  "nav.reports": "Reports",
+  "nav.audit": "Audit Logs",
+  "nav.portal": "Back to Portal",
+  "nav.portal_tooltip": "Return to TACAI Portal"
+}

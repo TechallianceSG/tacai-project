@@ -1,0 +1,1 @@
+I led a Python backend project for 12 engineers and coordinated with client stakeholders in Japanese and English. We improved deployment lead time by 30%. I documented decisions, handled production incidents, and reported risks early.

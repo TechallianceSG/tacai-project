@@ -1,0 +1,15 @@
+{
+  "app.title": "TAC 费用报销",
+  "app.subtitle": "日本员工费用报销自助服务",
+  "language.zh": "中文",
+  "language.ja": "日本語",
+  "language.en": "English",
+  "nav.portal": "返回 Portal",
+  "nav.portal_tooltip": "返回 TACAI Portal",
+  "nav.dashboard": "仪表盘",
+  "nav.claim_new": "新建申请",
+  "nav.claims": "申请列表",
+  "nav.finance_review": "财务审批",
+  "nav.finance_report": "月度报表",
+  "nav.audit_logs": "审计日志"
+}

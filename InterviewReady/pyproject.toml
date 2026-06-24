@@ -1,0 +1,16 @@
+[project]
+name = "interview-ready"
+version = "0.2.0"
+description = "Local AI-assisted recruitment intelligence MVP for interview readiness."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+documents = [
+  "pypdf>=4.0.0",
+  "python-docx>=1.1.0"
+]
+
+[project.scripts]
+interview-ready = "app.cli:main"
+interview-ready-web = "app.web:main"

@@ -1,0 +1,10 @@
+{
+  "programming": ["Python", "Java", "JavaScript", "TypeScript", "Go", "Ruby", "PHP", "C#", "C++", "SQL", "Shell"],
+  "frontend": ["React", "Vue", "Angular", "Next.js", "HTML", "CSS", "Tailwind", "Redux"],
+  "backend": ["Django", "Flask", "FastAPI", "Spring", "Node.js", "Express", "REST", "GraphQL", "Microservices"],
+  "data": ["PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "BigQuery", "Snowflake", "ETL", "Data Pipeline"],
+  "cloud_devops": ["AWS", "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "CI/CD", "GitHub Actions", "Jenkins"],
+  "ai_ml": ["Machine Learning", "LLM", "RAG", "NLP", "PyTorch", "TensorFlow", "scikit-learn", "MLOps"],
+  "security": ["OAuth", "OIDC", "IAM", "Zero Trust", "Vulnerability", "Penetration Test", "SOC", "SIEM"],
+  "delivery": ["Agile", "Scrum", "Product Management", "Stakeholder Management", "Requirements Definition", "System Design"]
+}

@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TAC Salary APAC Payroll</title>
+  <style>
+    :root { --navy: #14213d; --blue: #1f6feb; --accent-dark: #1d4ed8; --line: #d8dee9; --line-strong: #c8d1dc; --muted: #65758b; --bg: #f6f8fb; --surface: #ffffff; --surface-muted: #f8fafc; --soft-blue: #eef4ff; --focus: rgba(31, 111, 235, 0.18); --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04); }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: #1f2937; }
+    header { background: var(--navy); color: #fff; padding: 16px 28px 14px; box-shadow: 0 10px 28px rgba(20, 33, 61, .18); }
+    .header-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    header h1 { margin: 0 0 6px; letter-spacing: .01em; }
+    header p { margin: 0; color: #dbe7ff; }
+    .language-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e2e8f0; }
+    .language-switch select { padding: 7px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,.3); background: #fff; color: #0f172a; }
+    nav { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding: 10px; border-radius: 16px; background: rgba(255,255,255,.96); box-shadow: inset 0 0 0 1px rgba(216,222,233,.9); }
+    nav button, nav a { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 999px; border: 1px solid transparent; background: #f3f6fb; color: #24364f; text-decoration: none; font-weight: 700; cursor: pointer; }
+    nav button:hover, nav a:hover { background: #e8f1ff; color: var(--blue); }
+    nav .portal-link { background: linear-gradient(135deg, #dbeafe 0%, #ffffff 100%); color: #1d4ed8; border-color: #bfdbfe; }
+    main { max-width: 1240px; margin: 0 auto; padding: 22px 18px 42px; }
+    section { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow-soft); }
+    .page-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; padding: 16px; border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(135deg, #ffffff 0%, var(--soft-blue) 100%); }
+    .page-header p { margin: 6px 0 0; color: var(--muted); }
+    .ghost-link { display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 999px; background: #fff; border: 1px solid var(--line); color: var(--blue); text-decoration: none; font-weight: 700; }
+    h1, h2, h3 { margin-top: 0; }
+    form { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; align-items: end; }
+    label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+    input, select, textarea { min-height: 42px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; font: inherit; min-width: 0; background: #fff; }
+    input:focus, select:focus, textarea:focus { outline: 3px solid var(--focus); border-color: var(--blue); }
+    textarea { min-height: 42px; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--blue); color: #fff; font-weight: 700; cursor: pointer; }
+    button:hover { background: var(--accent-dark); }
+    button.secondary { background: #475569; }
+    button.success { background: #059669; }
+    button.warning { background: #d97706; }
+    button.danger { background: #dc2626; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; vertical-align: top; }
+    th { color: #475569; background: #f8fafc; }
+    .muted { color: var(--muted); }
+    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #e0f2fe; color: #0369a1; font-size: 12px; font-weight: 700; }
+    .pill.finalized, .pill.paid { background: #dcfce7; color: #166534; }
+    .pill.hr_review, .pill.calculated, .pill.payment_prepared { background: #fef3c7; color: #92400e; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+    .metric { background: #f8fafc; border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+    .metric strong { display: block; font-size: 24px; margin-top: 5px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .scroll { overflow-x: auto; }
+    .message { padding: 10px 12px; border-radius: 10px; background: #eff6ff; color: #1e40af; margin-bottom: 16px; display: none; }
+    .message.error { background: #fef2f2; color: #991b1b; }
+    .hidden { display: none; }
+    .two-col { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: 16px; }
+    .current-batch-bar { position: sticky; top: 0; z-index: 5; display: none; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 14px; background: #eff6ff; color: #1e3a8a; box-shadow: 0 4px 14px rgba(37, 99, 235, .12); }
+    .current-batch-bar strong { display: block; font-size: 15px; color: #172554; }
+    .current-batch-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; }
+    .current-batch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .current-batch-actions button { padding: 8px 10px; font-size: 13px; }
+    .workflow { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 14px 0; }
+    .workflow-step { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: #f8fafc; font-size: 13px; }
+    .workflow-step small { display: block; color: var(--muted); margin-bottom: 4px; }
+    .workflow-step.done { border-color: #bbf7d0; background: #f0fdf4; color: #166534; }
+    .workflow-step.active { border-color: #fde68a; background: #fffbeb; color: #92400e; box-shadow: inset 0 0 0 1px #f59e0b; }
+    .workflow-step.locked { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+    .batch-warning-panel { display: none; margin: 12px 0; padding: 12px; border: 1px solid #fde68a; border-radius: 12px; background: #fffbeb; color: #92400e; font-size: 13px; }
+    .batch-warning-panel ul { margin: 8px 0 0 18px; padding: 0; }
+    .country-entry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .country-card { display: grid; gap: 10px; padding: 18px; border: 1px solid #dbeafe; border-radius: 18px; background: linear-gradient(135deg, #ffffff 0%, #eef4ff 100%); color: inherit; text-decoration: none; box-shadow: 0 10px 22px rgba(31, 111, 235, .08); }
+    .country-card:hover { border-color: #93c5fd; box-shadow: 0 16px 28px rgba(31, 111, 235, .14); }
+    .country-card strong { font-size: 20px; color: #14213d; }
+    .country-card span { color: var(--muted); }
+    .context-banner { display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 14px; background: #ecfeff; border: 1px solid #a5f3fc; color: #155e75; font-weight: 700; }
+    .country-context .context-banner { display: block; }
+    .country-module-nav { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .country-module-nav a { display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 999px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); color: #e0f2fe; text-decoration: none; font-weight: 800; }
+    .country-module-nav a.active { background: #fff; color: var(--blue); border-color: #bfdbfe; }
+    .advanced-query-section { border-color: #c7d2fe; background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%); }
+    .advanced-query-section h2 { margin-bottom: 6px; }
+    .advanced-query-form { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .advanced-query-actions { display: flex; gap: 8px; align-items: end; }
+    .country-hidden { display: none !important; }
+    @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } .current-batch-bar { align-items: stretch; flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <div>
+        <h1 data-i18n="app.title">TAC Salary</h1>
+        <p data-i18n="app.subtitle">APAC payroll v2 local MVP — JP / SG / CN batch workflow, EmployeeAdmin snapshots, payment, notices, payslips and audit.</p>
+      </div>
+      <label class="language-switch"><span data-i18n="app.language">Language</span><select id="language-select"><option value="zh">中文</option><option value="ja">日本語</option><option value="en">English</option></select></label>
+    </div>
+    <nav>
+      <a id="portal-link" class="portal-link" href="http://127.0.0.1:8005" title="Return to TACAI Portal">⌂ <span data-i18n="nav.portal">Back to Portal</span></a>
+      <button data-view="platform" data-i18n="nav.platform">Payroll Platform</button>
+      <button data-view="dashboard">Dashboard</button>
+      <button data-view="batches">Payroll Batches</button>
+      <button data-view="salary-master">Salary Master</button>
+      <button data-view="records">Payroll Records</button>
+      <button data-view="payment">Payment</button>
+      <button data-view="reports">Reports</button>
+      <button data-view="payslips">Payslips</button>
+      <button data-view="notices">Notices</button>
+      <button data-view="feedback">Feedback</button>
+      <button data-view="parameters">Parameters</button>
+      <button data-view="audit">Audit</button>
+    </nav>
+    <div class="country-module-nav" aria-label="Country payroll modules">
+      <a data-country-link="JP" href="/payroll/jp">🇯🇵 <span data-i18n="country.jp">Japan Salary Calculation</span></a>
+      <a data-country-link="SG" href="/payroll/sg">🇸🇬 <span data-i18n="country.sg">Singapore Salary Calculation</span></a>
+      <a data-country-link="CN" href="/payroll/cn">🇨🇳 <span data-i18n="country.cn">China Salary Calculation</span></a>
+    </div>
+  </header>
+
+  <main>
+    <div id="message" class="message"></div>
+    <div id="context-banner" class="context-banner"></div>
+    <section id="view-platform">
+      <div class="page-header"><div><h2 data-i18n="platform.title">TAC Salary Platform</h2><p data-i18n="platform.subtitle">Choose a country payroll system. Shared workflow stays consistent; country fields, entities, rules and reports are scoped separately.</p></div></div>
+      <div class="country-entry-grid">
+        <a class="country-card" href="/payroll/jp"><strong data-i18n="platform.jpTitle">日本薪资计算</strong><span>JP / ENT-0001 / Tech Alliance KK</span><span data-i18n="platform.jpDesc">Japan salary calculation, haken/dispatch context, overtime, social insurance and resident tax workflow.</span></a>
+        <a class="country-card" href="/payroll/sg"><strong data-i18n="platform.sgTitle">新加坡薪资计算</strong><span>SG / ENT-0002 / TASG</span><span data-i18n="platform.sgDesc">Singapore payroll, CPF employee/employer, work pass and employer cost workflow.</span></a>
+        <a class="country-card" href="/payroll/cn"><strong data-i18n="platform.cnTitle">中国薪资计算</strong><span>CN / ENT-0003, ENT-0004, ENT-0005</span><span data-i18n="platform.cnDesc">China payroll scoped to China entities, city parameters, social insurance, housing fund and IIT workflow.</span></a>
+      </div>
+    </section>
+    <div id="current-batch-bar" class="current-batch-bar" aria-live="polite">
+      <div>
+        <strong id="current-batch-title">No payroll batch selected</strong>
+        <div id="current-batch-meta" class="current-batch-meta"></div>
+      </div>
+      <div class="current-batch-actions">
+        <a id="portal-link-sticky" class="ghost-link" href="http://127.0.0.1:8005" data-i18n="action.returnToPortal">Return to Main Portal</a>
+        <button type="button" class="secondary" data-view="batches">Change Batch</button>
+        <button type="button" data-view="records">Open Workflow</button>
+      </div>
+    </div>
+
+    <section id="advanced-query-section" class="advanced-query-section hidden">
+      <h2 data-i18n="query.title">Advanced Search</h2>
+      <p class="muted" data-i18n="query.subtitle">Filter current lists by entity, department, employee, payroll month, status and keyword.</p>
+      <form id="advanced-query-form" class="advanced-query-form">
+        <label><span data-i18n="query.entity">Entity</span><select name="entity_id"><option value="" data-i18n="query.allEntities">All entities</option></select></label>
+        <label><span data-i18n="query.department">Department</span><input name="department" placeholder="Department / ID"></label>
+        <label><span data-i18n="query.employee">Employee</span><input name="employee" placeholder="Employee ID / No / Name"></label>
+        <label><span data-i18n="query.month">Payroll Month</span><input name="payroll_month" type="month"></label>
+        <label><span data-i18n="query.status">Status</span><select name="status"><option value="" data-i18n="query.allStatuses">All statuses</option><option value="draft">draft</option><option value="active">active</option><option value="draft_created">draft_created</option><option value="data_loaded">data_loaded</option><option value="calculated">calculated</option><option value="hr_review">hr_review</option><option value="first_confirmed">first_confirmed</option><option value="final_review">final_review</option><option value="finalized">finalized</option><option value="payment_prepared">payment_prepared</option><option value="paid">paid</option><option value="submitted">submitted</option><option value="closed">closed</option></select></label>
+        <label><span data-i18n="query.keyword">Keyword</span><input name="q" placeholder="Batch / profile / note"></label>
+        <div class="advanced-query-actions"><button type="submit" data-i18n="query.apply">Apply Search</button><button type="button" class="secondary" id="advanced-query-reset" data-i18n="query.reset">Reset</button></div>
+      </form>
+    </section>
+
+    <section id="view-dashboard" class="hidden">
+      <div class="page-header"><div><h2 data-i18n="dashboard.title">Payroll Dashboard</h2><p data-i18n="dashboard.subtitle">Control salary master readiness, monthly payroll batches, notices, payments and audit from one payroll cockpit.</p></div><a id="portal-link-dashboard" class="ghost-link" href="http://127.0.0.1:8005" data-i18n="action.returnToPortal">Return to Main Portal</a></div>
+      <div id="dashboard-metrics" class="grid"></div>
+      <h3>Open Batches</h3>
+      <div class="scroll"><table><thead><tr><th>Batch</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Net Pay</th></tr></thead><tbody id="open-batches"></tbody></table></div>
+    </section>
+
+    <section id="view-batches" class="hidden">
+      <h2>Create Monthly Payroll Batch</h2>
+      <form id="batch-form">
+        <label>Country<select name="country_code" required><option value="JP">Japan</option><option value="SG">Singapore</option><option value="CN">China</option></select></label>
+        <label>Legal Entity<select name="entity_id" required></select></label>
+        <label>Payroll Month<input name="payroll_month" type="month" required></label>
+        <label>Period Start<input name="period_start" type="date"></label>
+        <label>Period End<input name="period_end" type="date"></label>
+        <label>Payment Date<input name="payment_date" type="date"></label>
+        <label>Payroll Type<select name="payroll_type"><option value="regular">regular</option><option value="bonus">bonus</option><option value="adjustment">adjustment</option></select></label>
+        <label>Notes<textarea name="notes" placeholder="Optional notes"></textarea></label>
+        <button type="submit">Create Batch</button>
+      </form>
+      <h2 style="margin-top:24px;">Payroll Batches</h2>
+      <div class="scroll"><table><thead><tr><th>Batch</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Employer Cost</th><th>Actions</th></tr></thead><tbody id="batch-list"></tbody></table></div>
+    </section>
+
+    <section id="view-salary-master" class="hidden">
+      <h2>Employee Salary Master</h2>
+      <form id="salary-master-form">
+        <label>Country<select name="country_code" required><option value="JP">Japan</option><option value="SG">Singapore</option><option value="CN">China</option></select></label>
+        <label>Entity<select name="entity_id" required></select></label>
+        <label>Employee No<select name="employee_no" id="salary-employee-select" required><option value="">Select country/entity first</option></select></label>
+        <label>Employee ID<input name="employee_id" required readonly placeholder="EMP-001"></label>
+        <label>Employee Name<input name="employee_name" required placeholder="Employee name"></label>
+        <label>Employment Type<select name="employment_type"><option value="regular">regular</option><option value="haken">haken/dispatched</option><option value="contract">contract</option><option value="part_time">part-time</option><option value="foreign_national">foreign national</option></select></label>
+        <label>Contract Type<input name="contract_type" placeholder="regular / fixed_term / haken"></label>
+        <label>Contract Start<input name="contract_start_date" type="date"></label>
+        <label>Contract End<input name="contract_end_date" type="date"></label>
+        <label>Employment Start<input name="employment_start_date" type="date"></label>
+        <label>Employment End<input name="employment_end_date" type="date"></label>
+        <label>Work City<input name="work_city" placeholder="Tokyo / Singapore / Shanghai"></label>
+        <label data-country-field="CN">CN City Code<select name="city_code"><option value="">N/A</option><option>SHANGHAI</option><option>NANJING</option><option>XIAN</option><option>WUHU</option></select></label>
+        <label>Base Salary<input name="base_salary" required type="number" step="0.01" value="0"></label>
+        <label>Position Allowance<input name="position_allowance" type="number" step="0.01" value="0"></label>
+        <label>Commute Allowance<input name="commute_allowance" type="number" step="0.01" value="0"></label>
+        <label>Housing Allowance<input name="housing_allowance" type="number" step="0.01" value="0"></label>
+        <label>Other Allowance<input name="other_allowance" type="number" step="0.01" value="0"></label>
+        <label data-country-field="JP">JP Overtime Pay<input name="overtime_pay" type="number" step="0.01" value="0"></label>
+        <label data-country-field="SG">SG CPF Employee<input name="cpf_employee" type="number" step="0.01" value="0"></label>
+        <label data-country-field="SG">SG CPF Employer<input name="cpf_employer" type="number" step="0.01" value="0"></label>
+        <label data-country-field="CN">CN Social Insurance Emp.<input name="social_insurance_employee" type="number" step="0.01" value="0"></label>
+        <label data-country-field="CN">CN Housing Fund Emp.<input name="housing_fund_employee" type="number" step="0.01" value="0"></label>
+        <label data-country-field="CN">CN IIT<input name="individual_income_tax" type="number" step="0.01" value="0"></label>
+        <label>Effective From<input name="effective_from" type="date" value="2026-01-01"></label>
+        <label>Rule Type<select name="rule_type"><option value="monthly_fixed">monthly_fixed</option><option value="monthly_prorated">monthly_prorated</option><option value="hourly">hourly</option><option value="daily">daily</option></select></label>
+        <label>Base Rate<input name="base_rate" type="number" step="0.01" value="0"></label>
+        <label>Hourly Rate<input name="hourly_rate" type="number" step="0.01" value="0"></label>
+        <label>Daily Rate<input name="daily_rate" type="number" step="0.01" value="0"></label>
+        <label>Std. Hours / Month<input name="standard_hours_per_month" type="number" step="0.01" value="160"></label>
+        <label>Std. Days / Month<input name="standard_days_per_month" type="number" step="0.01" value="20"></label>
+        <label>Actual Work Hours<input name="actual_work_hours" type="number" step="0.01" value="0"></label>
+        <label>Actual Work Days<input name="actual_work_days" type="number" step="0.01" value="0"></label>
+        <label>Proration<select name="proration_method"><option value="calendar_days">calendar_days</option><option value="working_days">working_days</option></select></label>
+        <label>Status<select name="status"><option value="draft">draft</option><option value="active">active</option></select></label>
+        <button type="submit">Create Salary Profile</button>
+      </form>
+      <p class="muted" data-i18n="salaryMaster.importHelp">Step 1 imports EmployeeAdmin records as draft salary profiles. Complete salary details and activate profiles before loading payroll.</p>
+      <div class="toolbar" style="margin-top:24px;"><h2 style="margin:0;" data-i18n="salaryMaster.profiles">Salary Profiles</h2><button type="button" id="import-employeeadmin" class="secondary" data-i18n="salaryMaster.import">Import EmployeeAdmin Draft Profiles</button></div>
+      <div class="scroll"><table><thead><tr><th>Profile</th><th>Employee</th><th>Country</th><th>Entity</th><th>Type</th><th>Rule</th><th>Contract End</th><th>Base</th><th>Allowances</th><th>Status</th><th>Completeness</th><th>Actions</th></tr></thead><tbody id="salary-master-list"></tbody></table></div>
+    </section>
+
+    <section id="view-records" class="hidden">
+      <h2>Payroll Records</h2>
+      <p class="muted">Select a batch from Payroll Batches to load EmployeeAdmin/salary master snapshots, calculate payroll, update country fields, adjust, confirm and finalize.</p>
+      <div id="selected-batch-panel" class="hidden">
+        <h3 id="selected-batch-title"></h3>
+        <p id="selected-batch-summary" class="muted"></p>
+        <div id="workflow-steps" class="workflow"></div>
+        <div id="selected-batch-warnings" class="batch-warning-panel"></div>
+        <div class="toolbar">
+          <button id="load-employees" class="secondary">Load Employees / Snapshot</button>
+          <button id="calculate-batch" class="warning">Run Payroll Calculation</button>
+          <button id="confirm-first" class="success">First Confirmation</button>
+          <button id="confirm-second" class="success">Second Confirmation</button>
+          <button id="finalize-batch" class="danger">Finalize Payroll</button>
+        </div>
+      </div>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Record</th><th>Employee</th><th>Country</th><th>Status</th><th>Gross</th><th>Deductions</th><th>Manual Adj.</th><th>Net</th><th>Employer Cost</th><th>Actions</th></tr></thead><tbody id="record-list"><tr><td colspan="10" class="muted">No batch selected.</td></tr></tbody></table></div>
+    </section>
+
+    <section id="view-payment" class="hidden">
+      <h2>Payment</h2>
+      <p class="muted">Open a finalized batch first. Payment preparation is blocked until payroll finalization.</p>
+      <div id="payment-summary" class="metric">No batch selected.</div>
+      <form id="payment-form" style="margin-top:16px;">
+        <label>Payment Method<select name="payment_method"><option value="manual_bank_transfer">manual_bank_transfer</option><option value="bank_file">bank_file</option><option value="cash">cash</option></select></label>
+        <label>Reference Number<input name="reference_number" placeholder="Bank reference"></label>
+        <label>Notes<textarea name="notes" placeholder="Payment notes"></textarea></label>
+        <button type="button" id="prepare-payment" class="warning">Prepare Payment</button>
+        <button type="button" id="export-payment-list" class="secondary">Export Payment CSV</button>
+        <button type="button" id="mark-paid" class="success">Mark Paid</button>
+        <button type="button" id="archive-batch" class="danger">Archive Batch</button>
+      </form>
+    </section>
+
+    <section id="view-reports" class="hidden">
+      <h2>Reports</h2>
+      <div class="toolbar"><button id="load-net-report">Net Pay Report</button><button id="load-employer-report">Employer Cost Report</button></div>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Batch</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Amount</th></tr></thead><tbody id="report-list"></tbody></table></div>
+    </section>
+
+    <section id="view-payslips" class="hidden">
+      <h2>Payslips</h2>
+      <p class="muted">Dependency-free MVP generates text payslip documents. PDF generation is deferred until a PDF dependency is approved.</p>
+      <div class="toolbar"><button id="generate-payslips" class="warning">Generate Payslips for Selected Batch</button></div>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Payslip</th><th>Employee</th><th>Type</th><th>Status</th><th>Generated</th><th>Download</th></tr></thead><tbody id="payslip-list"></tbody></table></div>
+    </section>
+
+    <section id="view-notices" class="hidden">
+      <h2>Notices</h2>
+      <p class="muted">If SMTP is not configured, notices are recorded as manual_send_pending instead of fake sent.</p>
+      <div class="toolbar"><button id="queue-first-notice" class="warning">Queue First Notice</button><button id="queue-final-notice" class="success">Queue Final Notice</button></div>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Notice</th><th>Type</th><th>Employee</th><th>Email</th><th>Status</th><th>Queued</th><th>Failure/Note</th></tr></thead><tbody id="notice-list"></tbody></table></div>
+    </section>
+
+    <section id="view-feedback" class="hidden">
+      <h2>Employee Feedback</h2>
+      <form id="feedback-form">
+        <label>Batch ID<input name="batch_id" placeholder="Selected batch auto-filled"></label>
+        <label>Employee ID<input name="employee_id" placeholder="Employee ID"></label>
+        <label>Payroll Record ID<input name="payroll_record_id" placeholder="Optional record"></label>
+        <label>Message<textarea name="message" required placeholder="Employee question or correction request"></textarea></label>
+        <button type="submit">Submit Feedback</button>
+      </form>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Feedback</th><th>Employee</th><th>Status</th><th>Message</th><th>Resolution</th><th>Action</th></tr></thead><tbody id="feedback-list"></tbody></table></div>
+    </section>
+
+    <section id="view-parameters" class="hidden">
+      <h2>Country Payroll Parameters</h2>
+      <p class="muted">Manual/parameter-assisted records only. JP/SG/CN statutory automation is intentionally not enabled until validated.</p>
+      <form id="parameter-form">
+        <label>Country<select name="country_code" required><option value="JP">Japan</option><option value="SG">Singapore</option><option value="CN">China</option></select></label>
+        <label>Entity<select name="entity_id" required></select></label>
+        <label>City Code<select name="city_code"><option value="">N/A</option><option>SHANGHAI</option><option>NANJING</option><option>XIAN</option><option>WUHU</option></select></label>
+        <label>Parameter Type<input name="parameter_type" value="manual_payroll_parameter"></label>
+        <label>Effective Start<input name="effective_start_date" type="date"></label>
+        <label>Values JSON<textarea name="values_json" placeholder='{"cpf_employee_rate":0.2}'></textarea></label>
+        <button type="submit">Create Parameter</button>
+      </form>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Parameter</th><th>Country</th><th>Entity</th><th>City</th><th>Type</th><th>Method</th><th>Status</th></tr></thead><tbody id="parameter-list"></tbody></table></div>
+    </section>
+
+    <section id="view-audit" class="hidden">
+      <h2>Audit Logs</h2>
+      <div class="scroll"><table><thead><tr><th>Time</th><th>Action</th><th>User</th><th>Record</th><th>Batch</th><th>Employee</th></tr></thead><tbody id="audit-list"></tbody></table></div>
+    </section>
+  </main>
+
+  <script>
+    const countryContextFromPath = () => {
+      const match = window.location.pathname.match(/^\/payroll\/(jp|sg|cn)\/?$/i);
+      return match ? match[1].toUpperCase() : '';
+    };
+    const countrySystemMeta = {
+      JP: { titleKey: 'platform.jpTitle', route: '/payroll/jp', entityIds: ['ENT-0001'], currency: 'JPY' },
+      SG: { titleKey: 'platform.sgTitle', route: '/payroll/sg', entityIds: ['ENT-0002'], currency: 'SGD' },
+      CN: { titleKey: 'platform.cnTitle', route: '/payroll/cn', entityIds: ['ENT-0003', 'ENT-0004', 'ENT-0005'], currency: 'CNY' }
+    };
+    const state = { config: { portal_base_url: 'http://127.0.0.1:8005' }, countryContext: countryContextFromPath(), currentView: '', activeReportType: 'net-pay', query: {}, entities: [], batches: [], salaryMaster: [], employeeAdminEmployees: [], selectedBatchId: '', selectedDetail: null, selectedBatchWarnings: [], lang: localStorage.getItem('tacSalaryLang') || 'zh' };
+    const message = document.querySelector('#message');
+
+    const i18n = {
+      zh: {
+        'app.title': 'TAC 工资模块', 'app.subtitle': 'APAC 工资 v2 本地 MVP — 日本 / 新加坡 / 中国批次流程、员工主数据快照、付款、通知、工资单和审计。', 'app.language': '语言',
+        'nav.portal': '返回 Portal', 'nav.platform': '薪资平台', 'nav.dashboard': '仪表盘', 'nav.batches': '工资批次', 'nav.salary-master': '薪资主记录', 'nav.records': '工资记录', 'nav.payment': '付款', 'nav.reports': '报表', 'nav.payslips': '工资单', 'nav.notices': '通知', 'nav.feedback': '反馈', 'nav.parameters': '参数', 'nav.audit': '审计', 'action.returnToPortal': '返回主门户',
+        'platform.title': 'TAC 薪资平台', 'platform.subtitle': '选择国家薪资系统。大流程共用，国家字段、entity、规则和报表分别处理。', 'platform.jpTitle': '日本薪资计算', 'platform.sgTitle': '新加坡薪资计算', 'platform.cnTitle': '中国薪资计算', 'platform.jpDesc': '日本工资、派遣/加班/社保/住民税流程。', 'platform.sgDesc': '新加坡工资、CPF、准证和雇主成本流程。', 'platform.cnDesc': '中国 entity、城市参数、社保、公积金和个税流程。', 'context.banner': '当前国家薪资系统', 'country.jp': '日本薪资计算', 'country.sg': '新加坡薪资计算', 'country.cn': '中国薪资计算',
+        'query.title': '高级查询', 'query.subtitle': '按法人 entity、部门、员工、工资月份、状态和关键词过滤当前列表。', 'query.entity': '法人 Entity', 'query.allEntities': '全部 Entity', 'query.department': '部门', 'query.employee': '员工', 'query.month': '工资月份', 'query.status': '状态', 'query.allStatuses': '全部状态', 'query.keyword': '关键词', 'query.apply': '查询', 'query.reset': '重置',
+        'field.country': '国家', 'field.entity': '法人 Entity', 'field.employeeNo': '员工号', 'field.employeeId': '员工 ID', 'field.employeeName': '员工姓名', 'field.employmentType': '雇佣类型', 'field.contractType': '合同类型', 'field.contractStart': '合同开始日', 'field.contractEnd': '合同结束日', 'field.employmentStart': '入职日', 'field.employmentEnd': '离职日', 'field.ruleType': '计算规则', 'field.baseRate': '基础费率', 'field.hourlyRate': '时薪', 'field.dailyRate': '日薪', 'field.standardHours': '月标准工时', 'field.standardDays': '月标准天数', 'field.actualHours': '实际工时', 'field.actualDays': '实际天数', 'field.proration': '折算方式', 'field.workCity': '工作城市', 'field.cityCode': '中国城市代码', 'field.baseSalary': '基本工资', 'field.positionAllowance': '岗位津贴', 'field.commuteAllowance': '通勤津贴', 'field.housingAllowance': '住房津贴', 'field.otherAllowance': '其他津贴', 'field.overtimePay': '日本加班费', 'field.effectiveFrom': '生效日', 'field.status': '状态',
+        'dashboard.title': '工资仪表盘', 'dashboard.subtitle': '统一管理薪资主数据、月度工资批次、通知、付款和审计。', 'dashboard.openBatches': '开放批次', 'batches.create': '创建月度工资批次', 'batches.list': '工资批次', 'salaryMaster.title': '员工薪资主记录', 'salaryMaster.profiles': '薪资档案', 'salaryMaster.import': '导入员工基础资料为草稿', 'salaryMaster.importHelp': '第 1 步先把员工主数据导入为薪资草稿；完善工资金额和生效日后，再设为 active 才能进入工资批次。', 'records.title': '工资记录',
+        'button.createBatch': '创建批次', 'button.createProfile': '保存薪资档案', 'button.loadEmployees': '导入 active 薪资档案', 'button.calculate': '运行工资计算', 'button.firstConfirm': '一级确认', 'button.secondConfirm': '二级确认', 'button.finalize': '最终锁定',
+        'msg.selectEmployee': '请先选择国家和法人 Entity', 'msg.noEmployees': '没有匹配的员工主记录', 'msg.profileCreated': '薪资档案已保存', 'msg.importDone': '员工基础资料导入完成', 'msg.employeesLoaded': '员工薪资档案已导入。'
+      },
+      ja: {
+        'app.title': 'TAC 給与モジュール', 'app.subtitle': 'APAC 給与 v2 ローカル MVP — JP / SG / CN のバッチ、EmployeeAdmin スナップショット、支払、通知、給与明細、監査。', 'app.language': '言語',
+        'nav.portal': 'ポータルへ戻る', 'nav.platform': '給与プラットフォーム', 'nav.dashboard': 'ダッシュボード', 'nav.batches': '給与バッチ', 'nav.salary-master': '給与マスター', 'nav.records': '給与レコード', 'nav.payment': '支払', 'nav.reports': 'レポート', 'nav.payslips': '給与明細', 'nav.notices': '通知', 'nav.feedback': 'フィードバック', 'nav.parameters': 'パラメータ', 'nav.audit': '監査', 'action.returnToPortal': 'メインポータルへ戻る',
+        'platform.title': 'TAC 給与プラットフォーム', 'platform.subtitle': '国別給与システムを選択します。共通ワークフローを維持し、国別フィールド・法人・ルール・レポートを分離します。', 'platform.jpTitle': '日本給与計算', 'platform.sgTitle': 'シンガポール給与計算', 'platform.cnTitle': '中国給与計算', 'platform.jpDesc': '日本給与、派遣、残業、社会保険、住民税ワークフロー。', 'platform.sgDesc': 'シンガポール給与、CPF、就労許可、雇用主コスト。', 'platform.cnDesc': '中国法人、都市パラメータ、社会保険、住宅積立金、個人所得税。', 'context.banner': '現在の国別給与システム', 'country.jp': '日本給与計算', 'country.sg': 'シンガポール給与計算', 'country.cn': '中国給与計算',
+        'query.title': '詳細検索', 'query.subtitle': '法人 entity、部門、社員、給与月、ステータス、キーワードで現在の一覧を絞り込みます。', 'query.entity': '法人 Entity', 'query.allEntities': 'すべての Entity', 'query.department': '部門', 'query.employee': '社員', 'query.month': '給与月', 'query.status': 'ステータス', 'query.allStatuses': 'すべてのステータス', 'query.keyword': 'キーワード', 'query.apply': '検索', 'query.reset': 'リセット',
+        'field.country': '国', 'field.entity': '法人 Entity', 'field.employeeNo': '社員番号', 'field.employeeId': '社員 ID', 'field.employeeName': '社員名', 'field.employmentType': '雇用区分', 'field.contractType': '契約区分', 'field.contractStart': '契約開始日', 'field.contractEnd': '契約終了日', 'field.employmentStart': '入社日', 'field.employmentEnd': '退職日', 'field.ruleType': '計算ルール', 'field.baseRate': '基準単価', 'field.hourlyRate': '時給', 'field.dailyRate': '日給', 'field.standardHours': '月標準時間', 'field.standardDays': '月標準日数', 'field.actualHours': '実働時間', 'field.actualDays': '実働日数', 'field.proration': '按分方法', 'field.workCity': '勤務地', 'field.cityCode': '中国都市コード', 'field.baseSalary': '基本給', 'field.positionAllowance': '役職手当', 'field.commuteAllowance': '通勤手当', 'field.housingAllowance': '住宅手当', 'field.otherAllowance': 'その他手当', 'field.overtimePay': '日本 残業代', 'field.effectiveFrom': '適用開始日', 'field.status': 'ステータス',
+        'dashboard.title': '給与ダッシュボード', 'dashboard.subtitle': '給与マスター、月次給与バッチ、通知、支払、監査を一元管理します。', 'dashboard.openBatches': '未完了バッチ', 'batches.create': '月次給与バッチ作成', 'batches.list': '給与バッチ', 'salaryMaster.title': '社員給与マスター', 'salaryMaster.profiles': '給与プロファイル', 'salaryMaster.import': '社員基本情報を下書き取込', 'salaryMaster.importHelp': 'ステップ 1 は EmployeeAdmin の基本情報を給与マスター下書きとして取込ます。給与金額と適用日を完成して active にしてから給与バッチへ取込ます。', 'records.title': '給与レコード',
+        'button.createBatch': 'バッチ作成', 'button.createProfile': '給与プロファイル保存', 'button.loadEmployees': 'active 給与プロファイル取込', 'button.calculate': '給与計算実行', 'button.firstConfirm': '一次確認', 'button.secondConfirm': '二次確認', 'button.finalize': '確定・ロック',
+        'msg.selectEmployee': '国と法人 Entity を選択してください', 'msg.noEmployees': '該当する社員マスターがありません', 'msg.profileCreated': '給与プロファイルを保存しました', 'msg.importDone': '社員基本情報取込が完了しました', 'msg.employeesLoaded': '給与プロファイルを取込ました。'
+      },
+      en: {
+        'app.title': 'TAC Salary', 'app.subtitle': 'APAC payroll v2 local MVP — JP / SG / CN batch workflow, EmployeeAdmin snapshots, payment, notices, payslips and audit.', 'app.language': 'Language',
+        'nav.portal': 'Back to Portal', 'nav.platform': 'Payroll Platform', 'nav.dashboard': 'Dashboard', 'nav.batches': 'Payroll Batches', 'nav.salary-master': 'Salary Master', 'nav.records': 'Payroll Records', 'nav.payment': 'Payment', 'nav.reports': 'Reports', 'nav.payslips': 'Payslips', 'nav.notices': 'Notices', 'nav.feedback': 'Feedback', 'nav.parameters': 'Parameters', 'nav.audit': 'Audit', 'action.returnToPortal': 'Return to Main Portal',
+        'platform.title': 'TAC Salary Platform', 'platform.subtitle': 'Choose a country payroll system. Shared workflow stays consistent; country fields, entities, rules and reports are scoped separately.', 'platform.jpTitle': 'Japan Salary Calculation', 'platform.sgTitle': 'Singapore Salary Calculation', 'platform.cnTitle': 'China Salary Calculation', 'platform.jpDesc': 'Japan salary, haken/dispatch, overtime, social insurance and resident tax workflow.', 'platform.sgDesc': 'Singapore payroll, CPF, work pass and employer cost workflow.', 'platform.cnDesc': 'China entities, city parameters, social insurance, housing fund and IIT workflow.', 'context.banner': 'Current country payroll system', 'country.jp': 'Japan Salary Calculation', 'country.sg': 'Singapore Salary Calculation', 'country.cn': 'China Salary Calculation',
+        'query.title': 'Advanced Search', 'query.subtitle': 'Filter current lists by entity, department, employee, payroll month, status and keyword.', 'query.entity': 'Entity', 'query.allEntities': 'All entities', 'query.department': 'Department', 'query.employee': 'Employee', 'query.month': 'Payroll Month', 'query.status': 'Status', 'query.allStatuses': 'All statuses', 'query.keyword': 'Keyword', 'query.apply': 'Apply Search', 'query.reset': 'Reset',
+        'field.country': 'Country', 'field.entity': 'Legal Entity', 'field.employeeNo': 'Employee No', 'field.employeeId': 'Employee ID', 'field.employeeName': 'Employee Name', 'field.employmentType': 'Employment Type', 'field.contractType': 'Contract Type', 'field.contractStart': 'Contract Start', 'field.contractEnd': 'Contract End', 'field.employmentStart': 'Employment Start', 'field.employmentEnd': 'Employment End', 'field.ruleType': 'Rule Type', 'field.baseRate': 'Base Rate', 'field.hourlyRate': 'Hourly Rate', 'field.dailyRate': 'Daily Rate', 'field.standardHours': 'Std. Hours / Month', 'field.standardDays': 'Std. Days / Month', 'field.actualHours': 'Actual Work Hours', 'field.actualDays': 'Actual Work Days', 'field.proration': 'Proration', 'field.workCity': 'Work City', 'field.cityCode': 'CN City Code', 'field.baseSalary': 'Base Salary', 'field.positionAllowance': 'Position Allowance', 'field.commuteAllowance': 'Commute Allowance', 'field.housingAllowance': 'Housing Allowance', 'field.otherAllowance': 'Other Allowance', 'field.overtimePay': 'JP Overtime Pay', 'field.effectiveFrom': 'Effective From', 'field.status': 'Status',
+        'dashboard.title': 'Payroll Dashboard', 'dashboard.subtitle': 'Manage salary master readiness, monthly payroll batches, notices, payments and audit in one payroll cockpit.', 'dashboard.openBatches': 'Open Batches', 'batches.create': 'Create Monthly Payroll Batch', 'batches.list': 'Payroll Batches', 'salaryMaster.title': 'Employee Salary Master', 'salaryMaster.profiles': 'Salary Profiles', 'salaryMaster.import': 'Import EmployeeAdmin Draft Profiles', 'salaryMaster.importHelp': 'Step 1 imports EmployeeAdmin records as draft salary profiles. Complete pay details and activate profiles before loading payroll.', 'records.title': 'Payroll Records',
+        'button.createBatch': 'Create Batch', 'button.createProfile': 'Save Salary Profile', 'button.loadEmployees': 'Load Active Salary Profiles', 'button.calculate': 'Run Payroll Calculation', 'button.firstConfirm': 'First Confirmation', 'button.secondConfirm': 'Second Confirmation', 'button.finalize': 'Finalize Payroll',
+        'msg.selectEmployee': 'Select country/entity first', 'msg.noEmployees': 'No matching employee records', 'msg.profileCreated': 'Salary profile saved', 'msg.importDone': 'Employee base import completed', 'msg.employeesLoaded': 'Salary profiles loaded.'
+      }
+    };
+
+    function t(key) { return i18n[state.lang]?.[key] || i18n.en[key] || key; }
+
+    function showMessage(text, isError = false) {
+      message.textContent = text;
+      message.className = `message${isError ? ' error' : ''}`;
+      message.style.display = 'block';
+      setTimeout(() => message.style.display = 'none', 7000);
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(body.error || 'Request failed');
+      return body;
+    }
+
+    function scopedPath(path, extra = {}) {
+      const params = new URLSearchParams(extra);
+      if (state.countryContext) params.set('country_code', state.countryContext);
+      const query = params.toString();
+      return query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
+    }
+
+    function countryLabel(countryCode = state.countryContext) {
+      if (!countryCode) return t('platform.title');
+      return t(countrySystemMeta[countryCode]?.titleKey || 'platform.title');
+    }
+
+    function applyCountryContext() {
+      const context = state.countryContext;
+      document.body.classList.toggle('country-context', Boolean(context));
+      const banner = document.querySelector('#context-banner');
+      if (banner) banner.textContent = context ? `${t('context.banner')}: ${countryLabel(context)} (${context})` : '';
+      document.querySelectorAll('select[name="country_code"]').forEach(select => {
+        if (context) {
+          select.innerHTML = `<option value="${context}">${countryLabel(context)}</option>`;
+          select.value = context;
+        }
+      });
+      document.querySelectorAll('[data-country-field]').forEach(element => {
+        element.classList.toggle('country-hidden', Boolean(context) && element.dataset.countryField !== context);
+      });
+    }
+
+    async function refreshScopedData() {
+      await Promise.all([loadEmployeeAdminEmployees(), loadDashboard(), loadBatches(), loadSalaryMaster(), loadFeedback(), loadParameters()]);
+    }
+
+    async function loadConfig() {
+      try {
+        state.config = await api('/api/v2/config');
+        document.querySelectorAll('#portal-link, #portal-link-sticky, #portal-link-dashboard').forEach(link => {
+          if (link) link.href = state.config.portal_base_url || 'http://127.0.0.1:8005';
+        });
+      } catch { /* keep local default */ }
+    }
+
+    function scopeParams(extra = {}) {
+      const params = new URLSearchParams();
+      if (state.countryContext) params.set('country_code', state.countryContext);
+      Object.entries(extra).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') params.set(key, value);
+      });
+      return params;
+    }
+
+    function scopedUrl(path, extra = {}) {
+      const params = scopeParams(extra).toString();
+      return params ? `${path}?${params}` : path;
+    }
+
+    function countryTitle() {
+      const meta = countrySystemMeta[state.countryContext];
+      return meta ? t(meta.titleKey) : t('platform.title');
+    }
+
+    function scopedCurrency() {
+      return countrySystemMeta[state.countryContext]?.currency || 'JPY';
+    }
+
+    function updateCountryTitles() {
+      const headerTitle = document.querySelector('header h1');
+      const headerSubtitle = document.querySelector('header p');
+      const title = countryTitle();
+      if (state.countryContext) {
+        if (headerTitle) headerTitle.textContent = title;
+        if (headerSubtitle) headerSubtitle.textContent = `${state.countryContext} / ${countrySystemMeta[state.countryContext]?.currency || ''} — ${t('app.subtitle')}`;
+        document.title = `${title} - TAC Salary`;
+      } else {
+        if (headerTitle) headerTitle.textContent = t('app.title');
+        if (headerSubtitle) headerSubtitle.textContent = t('app.subtitle');
+        document.title = t('app.title');
+      }
+      document.querySelectorAll('[data-country-link]').forEach(link => {
+        link.classList.toggle('active', link.dataset.countryLink === state.countryContext);
+      });
+    }
+
+    function applyCountryContext() {
+      document.body.classList.toggle('country-context', Boolean(state.countryContext));
+      const banner = document.querySelector('#context-banner');
+      if (banner) banner.textContent = state.countryContext ? `${t('context.banner')}: ${countryTitle()} (${state.countryContext})` : '';
+      document.querySelectorAll('select[name="country_code"]').forEach(select => {
+        if (state.countryContext) {
+          select.innerHTML = `<option value="${state.countryContext}">${countryTitle()}</option>`;
+          select.value = state.countryContext;
+        }
+      });
+      updateCountryTitles();
+      fillAdvancedEntitySelect();
+      applyCountryFields();
+    }
+
+    function applyCountryFields() {
+      const formCountry = document.querySelector('#salary-master-form [name="country_code"]')?.value || state.countryContext || '';
+      document.querySelectorAll('[data-country-field]').forEach(element => {
+        const allowed = (element.dataset.countryField || '').split(',').map(item => item.trim()).filter(Boolean);
+        element.classList.toggle('country-hidden', Boolean(formCountry) && !allowed.includes(formCountry));
+      });
+    }
+
+    function money(value, currency = 'JPY') {
+      const locale = state.lang === 'zh' ? 'zh-CN' : state.lang === 'en' ? 'en-US' : 'ja-JP';
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(Number(value || 0));
+    }
+
+    function setLabelText(control, key) {
+      const label = control?.closest('label');
+      if (!label) return;
+      const textNode = Array.from(label.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      if (textNode) textNode.textContent = t(key);
+      else label.insertBefore(document.createTextNode(t(key)), label.firstChild);
+    }
+
+    const textTargets = [
+      ['#view-dashboard h2', 'dashboard.title'], ['#view-dashboard h3', 'dashboard.openBatches'], ['#view-batches h2:first-child', 'batches.create'], ['#view-batches h2:nth-of-type(2)', 'batches.list'], ['#view-salary-master > h2', 'salaryMaster.title'], ['#view-records > h2', 'records.title'],
+      ['#batch-form button[type="submit"]', 'button.createBatch'], ['#salary-master-form button[type="submit"]', 'button.createProfile'], ['#load-employees', 'button.loadEmployees'], ['#calculate-batch', 'button.calculate'], ['#confirm-first', 'button.firstConfirm'], ['#confirm-second', 'button.secondConfirm'], ['#finalize-batch', 'button.finalize']
+    ];
+    const labelTargets = [
+      ['#batch-form [name="country_code"]', 'field.country'], ['#batch-form [name="entity_id"]', 'field.entity'], ['#salary-master-form [name="country_code"]', 'field.country'], ['#salary-master-form [name="entity_id"]', 'field.entity'], ['#salary-master-form [name="employee_no"]', 'field.employeeNo'], ['#salary-master-form [name="employee_id"]', 'field.employeeId'], ['#salary-master-form [name="employee_name"]', 'field.employeeName'], ['#salary-master-form [name="employment_type"]', 'field.employmentType'], ['#salary-master-form [name="contract_type"]', 'field.contractType'], ['#salary-master-form [name="contract_start_date"]', 'field.contractStart'], ['#salary-master-form [name="contract_end_date"]', 'field.contractEnd'], ['#salary-master-form [name="employment_start_date"]', 'field.employmentStart'], ['#salary-master-form [name="employment_end_date"]', 'field.employmentEnd'], ['#salary-master-form [name="work_city"]', 'field.workCity'], ['#salary-master-form [name="city_code"]', 'field.cityCode'], ['#salary-master-form [name="base_salary"]', 'field.baseSalary'], ['#salary-master-form [name="position_allowance"]', 'field.positionAllowance'], ['#salary-master-form [name="commute_allowance"]', 'field.commuteAllowance'], ['#salary-master-form [name="housing_allowance"]', 'field.housingAllowance'], ['#salary-master-form [name="other_allowance"]', 'field.otherAllowance'], ['#salary-master-form [name="overtime_pay"]', 'field.overtimePay'], ['#salary-master-form [name="effective_from"]', 'field.effectiveFrom'], ['#salary-master-form [name="rule_type"]', 'field.ruleType'], ['#salary-master-form [name="base_rate"]', 'field.baseRate'], ['#salary-master-form [name="hourly_rate"]', 'field.hourlyRate'], ['#salary-master-form [name="daily_rate"]', 'field.dailyRate'], ['#salary-master-form [name="standard_hours_per_month"]', 'field.standardHours'], ['#salary-master-form [name="standard_days_per_month"]', 'field.standardDays'], ['#salary-master-form [name="actual_work_hours"]', 'field.actualHours'], ['#salary-master-form [name="actual_work_days"]', 'field.actualDays'], ['#salary-master-form [name="proration_method"]', 'field.proration'], ['#salary-master-form [name="status"]', 'field.status'], ['#parameter-form [name="country_code"]', 'field.country'], ['#parameter-form [name="entity_id"]', 'field.entity']
+    ];
+
+    function applyLanguage() {
+      document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : state.lang;
+      document.title = t('app.title');
+      document.querySelector('#language-select').value = state.lang;
+      document.querySelectorAll('[data-i18n]').forEach(element => { element.textContent = t(element.dataset.i18n); });
+      document.querySelectorAll('nav [data-view]').forEach(button => { button.textContent = t(`nav.${button.dataset.view}`); });
+      textTargets.forEach(([selector, key]) => { const element = document.querySelector(selector); if (element) element.textContent = t(key); });
+      labelTargets.forEach(([selector, key]) => setLabelText(document.querySelector(selector), key));
+      applyCountryContext();
+      fillEmployeeSelect();
+    }
+
+    function formPayload(form) {
+      const payload = Object.fromEntries(new FormData(form).entries());
+      if (payload.values_json) {
+        try { payload.values = JSON.parse(payload.values_json); } catch { payload.values = { note: payload.values_json }; }
+        delete payload.values_json;
+      }
+      return payload;
+    }
+
+    function entityName(entityId) {
+      const entity = state.entities.find(item => item.entity_id === entityId);
+      return entity ? `${entity.entity_code} / ${entity.entity_name_local || entity.entity_name_en}` : entityId;
+    }
+
+    function selectedBatch() {
+      return state.batches.find(batch => batch.batch_id === state.selectedBatchId) || state.selectedDetail?.batch || null;
+    }
+
+    function locked(batch) {
+      return ['finalized', 'payment_prepared', 'paid', 'archived'].includes(batch?.status);
+    }
+
+    const workflowSteps = [
+      { key: 'salary_master', label: 'Salary Master', hint: 'Maintain profile', complete: batch => state.salaryMaster.some(profile => profile.country_code === batch.country_code && profile.entity_id === batch.entity_id) },
+      { key: 'draft_created', label: 'Create Batch', hint: 'Country/entity/month', statuses: ['draft_created', 'data_loaded', 'calculated', 'hr_review', 'first_confirmed', 'final_review', 'first_notice_sent', 'final_notice_sent', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'data_loaded', label: 'Load Employees', hint: 'Employee snapshot', statuses: ['data_loaded', 'calculated', 'hr_review', 'first_confirmed', 'final_review', 'first_notice_sent', 'final_notice_sent', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'calculated', label: 'Calculate', hint: 'Gross/net/cost', statuses: ['calculated', 'hr_review', 'first_confirmed', 'final_review', 'first_notice_sent', 'final_notice_sent', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'first_confirmed', label: 'First Confirm', hint: 'Maker/check', statuses: ['first_confirmed', 'final_review', 'first_notice_sent', 'final_notice_sent', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'notice', label: 'Notice / Payslip', hint: 'Employee review', statuses: ['first_notice_sent', 'final_notice_sent', 'final_review', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'second_confirmed', label: 'Second Confirm', hint: 'Final review', statuses: ['final_review', 'final_notice_sent', 'finalized', 'payment_prepared', 'paid'] },
+      { key: 'finalized', label: 'Finalize', hint: 'Lock payroll', statuses: ['finalized', 'payment_prepared', 'paid'] },
+      { key: 'payment_prepared', label: 'Payment', hint: 'Prepare / paid', statuses: ['payment_prepared', 'paid'] }
+    ];
+
+    function workflowStepState(step, batch) {
+      if (!batch) return '';
+      if (step.complete && step.complete(batch)) return 'done';
+      if (step.statuses?.includes(batch.status)) return batch.status === step.key || (step.key === 'notice' && ['first_notice_sent', 'final_notice_sent'].includes(batch.status)) ? 'active' : 'done';
+      if (locked(batch) && ['finalized', 'payment_prepared'].includes(step.key)) return 'locked';
+      return '';
+    }
+
+    function nextWorkflowStep(batch) {
+      if (!batch) return 'Create or open a payroll batch.';
+      const next = workflowSteps.find(step => workflowStepState(step, batch) === '');
+      return next ? `Next step: ${next.label}` : 'Workflow complete or ready for audit review.';
+    }
+
+    function renderWorkflow(batch) {
+      const container = document.querySelector('#workflow-steps');
+      if (!container || !batch) return;
+      container.innerHTML = workflowSteps.map((step, index) => {
+        const stateClass = workflowStepState(step, batch);
+        const marker = stateClass === 'done' ? '✅' : stateClass === 'active' ? '🟡' : stateClass === 'locked' ? '🔒' : '⬜';
+        return `<div class="workflow-step ${stateClass}"><small>${marker} Step ${index + 1}</small><strong>${step.label}</strong><br><span>${step.hint}</span></div>`;
+      }).join('');
+    }
+
+    function renderCurrentBatchBar(batch) {
+      const bar = document.querySelector('#current-batch-bar');
+      if (!bar || !batch) {
+        if (bar) bar.style.display = 'none';
+        return;
+      }
+      bar.style.display = 'flex';
+      document.querySelector('#current-batch-title').textContent = `Current Batch: ${batch.batch_id}`;
+      document.querySelector('#current-batch-meta').innerHTML = `
+        <span>${batch.country_code} / ${entityName(batch.entity_id)}</span>
+        <span>Month: ${batch.payroll_month}</span>
+        <span>Status: <span class="pill ${batch.status}">${batch.status}</span></span>
+        <span>Employees: ${batch.employee_count || 0}</span>
+        <span>Net: ${money(batch.net_pay_total, batch.currency)}</span>
+        <span>${nextWorkflowStep(batch)}</span>
+      `;
+    }
+
+    function fillEntitySelects() {
+      document.querySelectorAll('select[name="entity_id"]').forEach(select => {
+        if (select.closest('#advanced-query-form')) return;
+        const countrySelect = select.closest('form')?.querySelector('select[name="country_code"]');
+        if (countrySelect && state.countryContext) countrySelect.value = state.countryContext;
+        const currentCountry = state.countryContext || (countrySelect ? countrySelect.value : 'JP');
+        const currentValue = select.value;
+        select.innerHTML = state.entities
+          .filter(entity => entity.country_code === currentCountry)
+          .map(entity => `<option value="${entity.entity_id}">${entity.entity_code} — ${entity.entity_name_local || entity.entity_name_en}</option>`)
+          .join('');
+        if ([...select.options].some(option => option.value === currentValue)) select.value = currentValue;
+      });
+      fillAdvancedEntitySelect();
+      applyCountryFields();
+      fillEmployeeSelect();
+    }
+
+    function fillAdvancedEntitySelect() {
+      const select = document.querySelector('#advanced-query-form [name="entity_id"]');
+      if (!select) return;
+      const currentValue = select.value;
+      const entities = state.entities.filter(entity => !state.countryContext || entity.country_code === state.countryContext);
+      select.innerHTML = `<option value="">${t('query.allEntities')}</option>` + entities.map(entity => `<option value="${entity.entity_id}">${entity.country_code} / ${entity.entity_code} — ${entity.entity_name_local || entity.entity_name_en}</option>`).join('');
+      if ([...select.options].some(option => option.value === currentValue)) select.value = currentValue;
+    }
+
+    function advancedQueryPayload() {
+      const form = document.querySelector('#advanced-query-form');
+      if (!form) return {};
+      return Object.fromEntries([...new FormData(form).entries()].filter(([, value]) => String(value || '').trim() !== ''));
+    }
+
+    function updateAdvancedQueryVisibility() {
+      const section = document.querySelector('#advanced-query-section');
+      if (!section) return;
+      section.classList.toggle('hidden', !state.currentView || state.currentView === 'platform');
+    }
+
+    async function refreshCurrentView() {
+      if (state.currentView === 'dashboard') return loadDashboard();
+      if (state.currentView === 'batches') return loadBatches();
+      if (state.currentView === 'salary-master') return loadSalaryMaster();
+      if (state.currentView === 'records') { state.selectedBatchId = ''; return loadRecordsList(); }
+      if (state.currentView === 'reports') return loadReport(state.activeReportType || 'net-pay');
+      if (state.currentView === 'payslips') return loadPayslipList();
+      if (state.currentView === 'notices') return loadNoticeList();
+      if (state.currentView === 'feedback') return loadFeedback();
+      if (state.currentView === 'parameters') return loadParameters();
+      if (state.currentView === 'audit') return loadAudit();
+      return refreshScopedData();
+    }
+
+    function employeeOptionLabel(employee) {
+      return `${employee.employee_no || employee.employee_number || employee.employee_id} — ${employee.employee_name || employee.display_name || ''}`;
+    }
+
+    function salaryFormEmployees() {
+      const form = document.querySelector('#salary-master-form');
+      const country = form.querySelector('[name="country_code"]').value;
+      const entity = form.querySelector('[name="entity_id"]').value;
+      return state.employeeAdminEmployees.filter(employee => employee.country_code === country && employee.entity_id === entity);
+    }
+
+    function fillEmployeeSelect() {
+      const select = document.querySelector('#salary-employee-select');
+      if (!select) return;
+      const current = select.value;
+      const employees = salaryFormEmployees();
+      const placeholder = employees.length ? t('field.employeeNo') : (state.employeeAdminEmployees.length ? t('msg.noEmployees') : t('msg.selectEmployee'));
+      select.innerHTML = `<option value="">${placeholder}</option>` + employees.map(employee => `<option value="${employee.employee_no || employee.employee_number || employee.employee_id}" data-employee-id="${employee.employee_id}">${employeeOptionLabel(employee)}</option>`).join('');
+      if ([...select.options].some(option => option.value === current)) select.value = current;
+    }
+
+    function applySelectedEmployee() {
+      const form = document.querySelector('#salary-master-form');
+      const select = document.querySelector('#salary-employee-select');
+      const selectedOption = select.options[select.selectedIndex];
+      const employeeId = selectedOption?.dataset.employeeId || '';
+      const employee = state.employeeAdminEmployees.find(item => item.employee_id === employeeId && item.entity_id === form.querySelector('[name="entity_id"]').value);
+      if (!employee) return;
+      form.employee_id.value = employee.employee_id || '';
+      form.employee_name.value = employee.employee_name || employee.display_name || '';
+      form.employment_type.value = employee.employment_type || 'regular';
+      form.contract_type.value = employee.contract_type || employee.employment_type || 'regular';
+      form.contract_start_date.value = employee.contract_start_date || employee.employment_start_date || '';
+      form.contract_end_date.value = employee.contract_end_date || employee.employment_end_date || '';
+      form.employment_start_date.value = employee.employment_start_date || employee.contract_start_date || '';
+      form.employment_end_date.value = employee.employment_end_date || employee.contract_end_date || '';
+      form.work_city.value = employee.work_city || '';
+      form.base_salary.value = employee.base_salary || 0;
+      form.base_rate.value = employee.base_salary || 0;
+      form.commute_allowance.value = employee.commute_allowance || 0;
+    }
+
+    async function loadEmployeeAdminEmployees() {
+      const data = await api(scopedPath('/api/v2/employeeadmin-employees'));
+      state.employeeAdminEmployees = data.employees || [];
+      fillEmployeeSelect();
+    }
+
+    document.querySelectorAll('select[name="country_code"]').forEach(select => select.addEventListener('change', () => { fillEntitySelects(); applyCountryFields(); }));
+    document.querySelectorAll('select[name="entity_id"]').forEach(select => select.addEventListener('change', fillEmployeeSelect));
+    document.querySelector('#salary-employee-select').addEventListener('change', applySelectedEmployee);
+    document.querySelector('#advanced-query-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      state.query = advancedQueryPayload();
+      try { await refreshCurrentView(); }
+      catch (error) { showMessage(error.message, true); }
+    });
+    document.querySelector('#advanced-query-reset').addEventListener('click', async () => {
+      document.querySelector('#advanced-query-form').reset();
+      state.query = {};
+      try { await refreshCurrentView(); }
+      catch (error) { showMessage(error.message, true); }
+    });
+    document.querySelector('#language-select').addEventListener('change', event => { state.lang = event.target.value; localStorage.setItem('tacSalaryLang', state.lang); applyLanguage(); refreshScopedData(); if (state.selectedBatchId) loadSelectedBatch(); });
+
+    function switchView(name) {
+      state.currentView = name;
+      document.querySelectorAll('main > section').forEach(section => section.classList.add('hidden'));
+      const view = document.querySelector(`#view-${name}`);
+      if (view) view.classList.remove('hidden');
+      updateAdvancedQueryVisibility();
+      if (name === 'platform') {
+        document.querySelector('#current-batch-bar').style.display = 'none';
+      }
+      if (name === 'records' && !state.selectedBatchId) loadRecordsList().catch(error => showMessage(error.message, true));
+      if (name === 'payslips') loadPayslipList().catch(error => showMessage(error.message, true));
+      if (name === 'notices') loadNoticeList().catch(error => showMessage(error.message, true));
+    }
+    document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+
+    async function loadDashboard() {
+      const data = await api(scopedPath('/api/v2/dashboard', state.query));
+      document.querySelector('#dashboard-metrics').innerHTML = `
+        <div class="metric">Batches<strong>${data.batch_count}</strong></div>
+        <div class="metric">Salary Profiles<strong>${data.salary_master_count}</strong></div>
+        <div class="metric">Payroll Records<strong>${data.payroll_record_count}</strong></div>
+        <div class="metric">Net Pay Total<strong>${money(data.totals.net_pay_total, scopedCurrency())}</strong></div>
+      `;
+      document.querySelector('#open-batches').innerHTML = data.open_batches.length ? data.open_batches.map(batch => `
+        <tr><td>${batch.batch_id}</td><td>${batch.country_code}</td><td>${entityName(batch.entity_id)}</td><td>${batch.payroll_month}</td><td><span class="pill ${batch.status}">${batch.status}</span></td><td>${batch.employee_count}</td><td>${money(batch.net_pay_total, batch.currency)}</td></tr>
+      `).join('') : '<tr><td colspan="7" class="muted">No open batches.</td></tr>';
+    }
+
+    async function loadBatches() {
+      state.batches = await api(scopedPath('/api/v2/batches', state.query));
+      document.querySelector('#batch-list').innerHTML = state.batches.length ? state.batches.map(batch => `
+        <tr>
+          <td>${batch.batch_id}</td><td>${entityName(batch.entity_id)}</td><td>${batch.payroll_month}</td><td><span class="pill ${batch.status}">${batch.status}</span></td><td>${batch.employee_count}</td>
+          <td>${money(batch.gross_pay_total, batch.currency)}</td><td>${money(batch.deduction_total, batch.currency)}</td><td>${money(batch.net_pay_total, batch.currency)}</td><td>${money(batch.employer_cost_total, batch.currency)}</td>
+          <td><button type="button" onclick="selectBatch('${batch.batch_id}')">Open</button></td>
+        </tr>
+      `).join('') : '<tr><td colspan="10" class="muted">No payroll batches yet.</td></tr>';
+    }
+
+    async function loadSalaryMaster() {
+      state.salaryMaster = await api(scopedPath('/api/v2/salary-master', state.query));
+      document.querySelector('#salary-master-list').innerHTML = state.salaryMaster.length ? state.salaryMaster.map(profile => {
+        const allowances = Object.values(profile.fixed_allowances || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+        const completeness = profile.salary_profile_completeness || { pay_complete: Number(profile.base_salary || 0) > 0, missing_fields: Number(profile.base_salary || 0) > 0 ? [] : ['base_salary'] };
+        const completeText = completeness.pay_complete ? 'pay complete' : `missing: ${(completeness.missing_fields || []).join(', ')}`;
+        const rule = profile.salary_calculation_rule || {};
+        const contract = profile.contract_snapshot || {};
+        return `<tr><td>${profile.profile_id}</td><td>${profile.employee_name}<br><span class="muted">${profile.employee_id}</span></td><td>${profile.country_code}</td><td>${entityName(profile.entity_id)}</td><td>${profile.employment_type}</td><td>${rule.rule_type || 'monthly_fixed'}</td><td>${contract.contract_end_date || contract.employment_end_date || '<span class="muted">open</span>'}</td><td>${money(profile.base_salary, profile.currency)}</td><td>${money(allowances, profile.currency)}</td><td><span class="pill ${profile.status}">${profile.status}</span></td><td>${completeText}</td><td><button type="button" onclick="editSalaryProfile('${profile.profile_id}')">Complete / Edit</button></td></tr>`;
+      }).join('') : '<tr><td colspan="12" class="muted">No salary profiles yet.</td></tr>';
+    }
+
+    async function loadRecordsList() {
+      const records = await api(scopedPath('/api/v2/records', state.query));
+      state.selectedDetail = null;
+      document.querySelector('#selected-batch-panel').classList.add('hidden');
+      renderCurrentBatchBar(null);
+      document.querySelector('#record-list').innerHTML = records.length ? records.map(record => `
+        <tr>
+          <td>${record.payroll_record_id}</td><td>${record.employee_snapshot?.employee_name || record.employee_id}<br><span class="muted">${record.employee_id}</span></td><td>${record.country_code}</td><td><span class="pill ${record.status}">${record.status}</span></td>
+          <td>${money(record.gross_pay, record.currency)}</td><td>${money(record.deduction_total, record.currency)}</td><td>${money(record.manual_adjustments_total, record.currency)}</td><td><strong>${money(record.net_pay, record.currency)}</strong></td><td>${money(record.employer_cost_total, record.currency)}</td>
+          <td><button type="button" onclick="selectBatch('${record.batch_id}')">Open Batch</button></td>
+        </tr>
+      `).join('') : '<tr><td colspan="10" class="muted">No payroll records matched the current query.</td></tr>';
+    }
+
+    function editSalaryProfile(profileId) {
+      const profile = state.salaryMaster.find(item => item.profile_id === profileId);
+      if (!profile) return showMessage('Salary profile not found.', true);
+      const form = document.querySelector('#salary-master-form');
+      form.dataset.profileId = profile.profile_id;
+      form.country_code.value = profile.country_code || 'JP';
+      fillEntitySelects();
+      form.entity_id.value = profile.entity_id || '';
+      fillEmployeeSelect();
+      const employeeNo = profile.employee_no || profile.employee_number || profile.employee_id || '';
+      if (employeeNo && ![...form.employee_no.options].some(option => option.value === employeeNo)) {
+        form.employee_no.insertAdjacentHTML('beforeend', `<option value="${employeeNo}" data-employee-id="${profile.employee_id}">${employeeNo} — ${profile.employee_name || ''}</option>`);
+      }
+      form.employee_no.value = employeeNo;
+      form.employee_id.value = profile.employee_id || '';
+      form.employee_name.value = profile.employee_name || '';
+      form.employment_type.value = profile.employment_type || 'regular';
+      const contract = profile.contract_snapshot || {};
+      const rule = profile.salary_calculation_rule || {};
+      form.contract_type.value = contract.contract_type || profile.contract_type || profile.employment_type || 'regular';
+      form.contract_start_date.value = contract.contract_start_date || '';
+      form.contract_end_date.value = contract.contract_end_date || '';
+      form.employment_start_date.value = contract.employment_start_date || '';
+      form.employment_end_date.value = contract.employment_end_date || '';
+      form.work_city.value = profile.work_city || '';
+      form.city_code.value = profile.city_code || '';
+      form.base_salary.value = profile.base_salary || 0;
+      form.position_allowance.value = profile.fixed_allowances?.position_allowance || 0;
+      form.commute_allowance.value = profile.fixed_allowances?.commute_allowance || 0;
+      form.housing_allowance.value = profile.fixed_allowances?.housing_allowance || 0;
+      form.other_allowance.value = profile.fixed_allowances?.other_allowance || 0;
+      form.overtime_pay.value = profile.overtime_pay || 0;
+      form.effective_from.value = profile.effective_from || '2026-01-01';
+      form.rule_type.value = rule.rule_type || 'monthly_fixed';
+      form.base_rate.value = rule.base_rate || profile.base_salary || 0;
+      form.hourly_rate.value = rule.hourly_rate || 0;
+      form.daily_rate.value = rule.daily_rate || 0;
+      form.standard_hours_per_month.value = rule.standard_hours_per_month || 160;
+      form.standard_days_per_month.value = rule.standard_days_per_month || 20;
+      form.actual_work_hours.value = rule.actual_work_hours || 0;
+      form.actual_work_days.value = rule.actual_work_days || 0;
+      form.proration_method.value = rule.proration_method || 'calendar_days';
+      form.status.value = profile.status || 'draft';
+      form.querySelector('button[type="submit"]').textContent = 'Save Salary Profile';
+      switchView('salary-master');
+    }
+    window.editSalaryProfile = editSalaryProfile;
+
+    async function selectBatch(batchId) {
+      state.selectedBatchId = batchId;
+      state.selectedBatchWarnings = [];
+      document.querySelector('#feedback-form [name="batch_id"]').value = batchId;
+      switchView('records');
+      await loadSelectedBatch();
+    }
+    window.selectBatch = selectBatch;
+
+    function renderBatchWarnings(warnings = [], importRun = null) {
+      const panel = document.querySelector('#selected-batch-warnings');
+      if (!panel) return;
+      const visibleWarnings = warnings.filter(Boolean);
+      if (!visibleWarnings.length && !importRun) {
+        panel.style.display = 'none';
+        panel.innerHTML = '';
+        return;
+      }
+      const summary = importRun ? `Latest load ${importRun.import_run_id}: source ${importRun.source_system}, loaded ${importRun.success_count}, warnings ${importRun.warning_count}.` : 'Latest employee load warnings:';
+      panel.innerHTML = `<strong>${summary}</strong>${visibleWarnings.length ? `<ul>${visibleWarnings.map(item => `<li>${item}</li>`).join('')}</ul>` : ''}`;
+      panel.style.display = 'block';
+    }
+
+    async function loadSelectedBatch() {
+      if (!state.selectedBatchId) return;
+      const detail = await api(`/api/v2/batches/${encodeURIComponent(state.selectedBatchId)}`);
+      state.selectedDetail = detail;
+      const batch = detail.batch;
+      const isLocked = locked(batch);
+      document.querySelector('#selected-batch-panel').classList.remove('hidden');
+      document.querySelector('#selected-batch-title').textContent = `${batch.batch_id} — ${entityName(batch.entity_id)} — ${batch.status}`;
+      document.querySelector('#selected-batch-summary').textContent = `Employee load source: ${batch.last_employee_load_source || 'not loaded'} / employees: ${batch.employee_count || 0} / net: ${money(batch.net_pay_total, batch.currency)} / ${nextWorkflowStep(batch)}`;
+      renderCurrentBatchBar(batch);
+      renderWorkflow(batch);
+      const persistedWarnings = state.selectedBatchWarnings.length ? state.selectedBatchWarnings : (detail.latest_import_run?.warnings || []);
+      renderBatchWarnings(persistedWarnings, detail.latest_import_run || null);
+      ['load-employees', 'calculate-batch', 'finalize-batch'].forEach(id => document.querySelector(`#${id}`).disabled = isLocked);
+      document.querySelector('#record-list').innerHTML = detail.records.length ? detail.records.map(record => `
+        <tr>
+          <td>${record.payroll_record_id}</td><td>${record.employee_snapshot?.employee_name || record.employee_id}<br><span class="muted">${record.employee_id}</span></td><td>${record.country_code}</td><td><span class="pill ${record.status}">${record.status}</span></td>
+          <td>${money(record.gross_pay, record.currency)}</td><td>${money(record.deduction_total, record.currency)}</td><td>${money(record.manual_adjustments_total, record.currency)}</td><td><strong>${money(record.net_pay, record.currency)}</strong></td><td>${money(record.employer_cost_total, record.currency)}</td>
+          <td class="toolbar"><button type="button" ${isLocked ? 'disabled' : ''} onclick="adjustRecord('${record.payroll_record_id}')">Adjust</button><button type="button" ${isLocked ? 'disabled' : ''} onclick="editRecord('${record.payroll_record_id}')">Edit Fields</button></td>
+        </tr>
+      `).join('') : '<tr><td colspan="10" class="muted">No payroll records. Load EmployeeAdmin/salary master snapshots first.</td></tr>';
+      renderPayment(detail);
+      renderPayslips(detail.payslips || []);
+      renderNotices(detail.notices || []);
+      await loadBatches();
+      await loadDashboard();
+    }
+
+    async function adjustRecord(recordId) {
+      const amount = prompt('Adjustment amount, positive or negative:', '0');
+      if (amount === null) return;
+      const reason = prompt('Adjustment reason:', 'Manual payroll correction') || 'Manual payroll correction';
+      await api(`/api/v2/records/${encodeURIComponent(recordId)}/adjust`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount, reason, user: 'local_admin' })
+      });
+      showMessage('Adjustment saved.');
+      await loadSelectedBatch();
+      await loadAudit();
+    }
+    window.adjustRecord = adjustRecord;
+
+    async function editRecord(recordId) {
+      const field = prompt('Field to update (examples: deductions.income_tax, salary_calculation_rule_snapshot.actual_work_hours, employer_costs.cpf_employer, cn_fields.city_code):', 'deductions.other_deduction');
+      if (!field) return;
+      const value = prompt('New value:', '0');
+      if (value === null) return;
+      const [section, key] = field.split('.');
+      if (!section || !key) return showMessage('Use section.field format.', true);
+      await api(`/api/v2/records/${encodeURIComponent(recordId)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [section]: { [key]: value }, user: 'local_admin' })
+      });
+      showMessage('Record field updated.');
+      await loadSelectedBatch();
+      await loadAudit();
+    }
+    window.editRecord = editRecord;
+
+    document.querySelector('#batch-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const batch = await api('/api/v2/batches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...formPayload(event.target), user: 'local_admin' }) });
+        event.target.reset(); fillEntitySelects(); showMessage(`Created batch ${batch.batch_id}.`); await loadBatches(); await loadDashboard();
+      } catch (error) { showMessage(error.message, true); }
+    });
+
+    document.querySelector('#salary-master-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const profileId = event.target.dataset.profileId || '';
+        const path = profileId ? `/api/v2/salary-master/${encodeURIComponent(profileId)}` : '/api/v2/salary-master';
+        const method = profileId ? 'PUT' : 'POST';
+        const profile = await api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...formPayload(event.target), user: 'local_admin' }) });
+        delete event.target.dataset.profileId;
+        event.target.reset(); fillEntitySelects(); fillEmployeeSelect(); event.target.querySelector('[name="status"]').value = 'draft'; event.target.querySelector('button[type="submit"]').textContent = t('button.createProfile');
+        showMessage(`${t('msg.profileCreated')}: ${profile.profile_id}.`); await loadSalaryMaster(); await loadDashboard(); await loadAudit();
+      } catch (error) { showMessage(error.message, true); }
+    });
+
+    document.querySelector('#import-employeeadmin').addEventListener('click', async () => {
+      try {
+        const form = document.querySelector('#salary-master-form');
+        const result = await api('/api/v2/salary-master/import-employeeadmin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: 'local_admin', country_code: form.country_code.value, entity_id: form.entity_id.value, effective_from: form.effective_from.value || '2026-01-01', update_existing_drafts: true, overwrite_pay_values: false }) });
+        const warningText = result.warnings?.length ? ` Warnings: ${result.warnings.join('; ')}` : '';
+        showMessage(`${t('msg.importDone')}: draft +${result.created_draft_count || result.created_count} / updated ${result.updated_draft_count || result.updated_count} / active preserved ${result.active_preserved_count || 0} / skipped ${result.skipped_count}.${warningText}`);
+        await Promise.all([loadSalaryMaster(), loadDashboard(), loadEmployeeAdminEmployees(), loadAudit()]);
+      } catch (error) { showMessage(error.message, true); }
+    });
+
+    async function runBatchAction(path, success, extra = {}) {
+      if (!state.selectedBatchId) return showMessage('Select a batch first.', true);
+      try {
+        const result = await api(`/api/v2/batches/${encodeURIComponent(state.selectedBatchId)}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user: 'local_admin', allow_salary_master_fallback: true, ...extra }) });
+        if (path === '/load-employees') {
+          state.selectedBatchWarnings = result.warnings || [];
+          renderBatchWarnings(state.selectedBatchWarnings, result.import_run || null);
+          const importRun = result.import_run;
+          showMessage(`${success} source ${result.source}; loaded ${result.loaded_count}; skipped existing ${result.skipped_existing_count}; warnings ${importRun?.warning_count || 0}.`);
+        } else {
+          showMessage(result.warnings?.length ? `${success} Warnings: ${result.warnings.join('; ')}` : success);
+        }
+        await loadSelectedBatch(); await loadAudit();
+      } catch (error) { showMessage(error.message, true); }
+    }
+    document.querySelector('#load-employees').addEventListener('click', () => runBatchAction('/load-employees', t('msg.employeesLoaded')));
+    document.querySelector('#calculate-batch').addEventListener('click', () => runBatchAction('/calculate', 'Payroll calculated.'));
+    document.querySelector('#confirm-first').addEventListener('click', () => runBatchAction('/confirm/first', 'First confirmation completed.'));
+    document.querySelector('#confirm-second').addEventListener('click', () => runBatchAction('/confirm/second', 'Second confirmation completed.'));
+    document.querySelector('#finalize-batch').addEventListener('click', () => runBatchAction('/finalize', 'Payroll finalized and locked.'));
+
+    function renderPayment(detail = state.selectedDetail) {
+      const batch = detail?.batch || selectedBatch();
+      const payment = detail?.payment;
+      document.querySelector('#payment-summary').innerHTML = batch ? `Batch: <strong>${batch.batch_id}</strong><br>Status: <span class="pill ${batch.status}">${batch.status}</span><br>Employees: ${batch.employee_count || 0}<br>Net Pay: ${money(batch.net_pay_total, batch.currency)}<br>Payment: ${payment ? `${payment.payment_status} / ${payment.reference_number || ''}` : 'not prepared'}<br>Payment exports: ${payment?.export_count || 0}<br>Archived at: ${batch.archived_at || '-'}` : 'No batch selected.';
+      document.querySelector('#prepare-payment').disabled = !batch || batch.status !== 'finalized';
+      document.querySelector('#export-payment-list').disabled = !batch || !['payment_prepared', 'paid', 'archived'].includes(batch.status);
+      document.querySelector('#mark-paid').disabled = !batch || batch.status !== 'payment_prepared';
+      document.querySelector('#archive-batch').disabled = !batch || batch.status !== 'paid';
+    }
+
+    document.querySelector('#prepare-payment').addEventListener('click', async () => {
+      const payload = formPayload(document.querySelector('#payment-form'));
+      await runBatchAction('/payment/prepare', 'Payment prepared.', payload);
+    });
+    document.querySelector('#export-payment-list').addEventListener('click', () => {
+      if (!state.selectedBatchId) return showMessage('Select a batch first.', true);
+      window.open(`/api/v2/batches/${encodeURIComponent(state.selectedBatchId)}/payment/export`, '_blank');
+      showMessage('Payment CSV export started and audited.');
+      setTimeout(() => loadSelectedBatch().catch(error => showMessage(error.message, true)), 700);
+    });
+    document.querySelector('#mark-paid').addEventListener('click', async () => {
+      const payload = formPayload(document.querySelector('#payment-form'));
+      await runBatchAction('/payment/mark-paid', 'Payment marked paid.', payload);
+    });
+    document.querySelector('#archive-batch').addEventListener('click', async () => {
+      await runBatchAction('/archive', 'Paid payroll batch archived as read-only history.');
+    });
+
+    async function loadReport(type) {
+      try {
+        state.activeReportType = type;
+        const report = await api(scopedPath(`/api/v2/reports/${type}`, state.query));
+        document.querySelector('#report-list').innerHTML = report.rows.length ? report.rows.map(row => `
+          <tr><td>${row.batch_id}</td><td>${row.country_code}</td><td>${entityName(row.entity_id)}</td><td>${row.payroll_month}</td><td><span class="pill ${row.status}">${row.status}</span></td><td>${row.employee_count}</td><td>${money(row.amount, row.currency)}</td></tr>
+        `).join('') + `<tr><td colspan="6"><strong>Total</strong></td><td><strong>${money(report.total_amount, scopedCurrency())}</strong></td></tr>` : '<tr><td colspan="7" class="muted">No report rows.</td></tr>';
+      } catch (error) { showMessage(error.message, true); }
+    }
+    document.querySelector('#load-net-report').addEventListener('click', () => loadReport('net-pay'));
+    document.querySelector('#load-employer-report').addEventListener('click', () => loadReport('employer-cost'));
+
+    function renderPayslips(payslips = []) {
+      document.querySelector('#payslip-list').innerHTML = payslips.length ? payslips.map(doc => `
+        <tr><td>${doc.payslip_id}</td><td>${doc.employee_id}</td><td>${doc.document_type}</td><td><span class="pill">${doc.status}</span></td><td>${doc.generated_at || ''}</td><td><a href="${doc.download_url}" target="_blank">Download</a></td></tr>
+      `).join('') : '<tr><td colspan="6" class="muted">No payslips generated.</td></tr>';
+    }
+
+    async function loadPayslipList() {
+      renderPayslips(await api(scopedPath('/api/v2/payslips', state.query)));
+    }
+    document.querySelector('#generate-payslips').addEventListener('click', () => runBatchAction('/payslips/generate', 'Payslips generated.', { document_type: 'draft_text_payslip' }));
+
+    function renderNotices(notices = []) {
+      document.querySelector('#notice-list').innerHTML = notices.length ? notices.map(notice => `
+        <tr><td>${notice.notice_id}</td><td>${notice.notice_type}</td><td>${notice.recipient_employee_id}</td><td>${notice.recipient_email_snapshot || ''}</td><td><span class="pill">${notice.status}</span></td><td>${notice.queued_at || ''}</td><td>${notice.failure_reason || notice.notes || ''}</td></tr>
+      `).join('') : '<tr><td colspan="7" class="muted">No notices queued.</td></tr>';
+    }
+
+    async function loadNoticeList() {
+      renderNotices(await api(scopedPath('/api/v2/notices', state.query)));
+    }
+    document.querySelector('#queue-first-notice').addEventListener('click', () => runBatchAction('/notices/first', 'First notices queued.'));
+    document.querySelector('#queue-final-notice').addEventListener('click', () => runBatchAction('/notices/final', 'Final notices queued.'));
+
+    async function loadFeedback() {
+      const feedback = await api(scopedPath('/api/v2/feedback', state.query));
+      document.querySelector('#feedback-list').innerHTML = feedback.length ? feedback.slice().reverse().map(item => `
+        <tr><td>${item.feedback_id}</td><td>${item.employee_id}</td><td><span class="pill">${item.feedback_status}</span></td><td>${item.message || ''}</td><td>${item.resolution || ''}</td><td><button onclick="resolveFeedback('${item.feedback_id}')">Resolve</button></td></tr>
+      `).join('') : '<tr><td colspan="6" class="muted">No feedback.</td></tr>';
+    }
+    document.querySelector('#feedback-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try { await api('/api/v2/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...formPayload(event.target), user: 'local_admin' }) }); event.target.reset(); showMessage('Feedback submitted.'); await loadFeedback(); await loadAudit(); }
+      catch (error) { showMessage(error.message, true); }
+    });
+    async function resolveFeedback(feedbackId) {
+      const resolution = prompt('Resolution:', 'Reviewed and closed');
+      if (resolution === null) return;
+      await api(`/api/v2/feedback/${encodeURIComponent(feedbackId)}/resolve`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resolution, user: 'local_admin' }) });
+      showMessage('Feedback resolved.'); await loadFeedback(); await loadAudit();
+    }
+    window.resolveFeedback = resolveFeedback;
+
+    async function loadParameters() {
+      const parameters = await api(scopedPath('/api/v2/parameters', state.query));
+      document.querySelector('#parameter-list').innerHTML = parameters.length ? parameters.map(parameter => `
+        <tr><td>${parameter.parameter_id}</td><td>${parameter.country_code}</td><td>${entityName(parameter.entity_id)}</td><td>${parameter.city_code || ''}</td><td>${parameter.parameter_type}</td><td>${parameter.calculation_method}</td><td><span class="pill">${parameter.status}</span></td></tr>
+      `).join('') : '<tr><td colspan="7" class="muted">No parameters yet.</td></tr>';
+    }
+    document.querySelector('#parameter-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      try { await api('/api/v2/parameters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...formPayload(event.target), user: 'local_admin' }) }); event.target.reset(); fillEntitySelects(); showMessage('Parameter created.'); await loadParameters(); await loadAudit(); }
+      catch (error) { showMessage(error.message, true); }
+    });
+
+    async function loadAudit() {
+      const audits = await api(scopedPath('/api/v2/audit-logs', state.query));
+      document.querySelector('#audit-list').innerHTML = audits.slice().reverse().slice(0, 100).map(audit => `
+        <tr><td>${audit.timestamp || ''}</td><td>${audit.action || ''}</td><td>${audit.user || ''}</td><td>${audit.record_id || ''}</td><td>${audit.batch_id || ''}</td><td>${audit.employee_id || ''}</td></tr>
+      `).join('') || '<tr><td colspan="6" class="muted">No audit logs yet.</td></tr>';
+    }
+
+    async function init() {
+      try {
+        applyLanguage();
+        await loadConfig();
+        state.entities = await api(scopedPath('/api/v2/entities'));
+        fillEntitySelects();
+        await Promise.all([loadEmployeeAdminEmployees(), loadDashboard(), loadBatches(), loadSalaryMaster(), loadAudit(), loadFeedback(), loadParameters()]);
+        applyCountryContext();
+        switchView(state.countryContext ? 'dashboard' : 'platform');
+      } catch (error) { showMessage(error.message, true); }
+    }
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "app.title": "Customer Billing",
+  "app.subtitle": "客户请款与应收账款管理",
+  "nav.dashboard": "仪表盘",
+  "nav.billings": "请款列表",
+  "nav.new_billing": "新建请款",
+  "nav.customers": "客户主数据",
+  "nav.reports": "报表",
+  "nav.audit": "审计日志",
+  "nav.portal": "返回 Portal",
+  "nav.portal_tooltip": "返回 TACAI 主 Portal"
+}

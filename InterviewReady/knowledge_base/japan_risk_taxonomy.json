@@ -1,0 +1,37 @@
+{
+  "communication_risks": [
+    {
+      "risk": "Unclear logic structure",
+      "signals": ["maybe", "various", "etc", "somehow", "色々", "なんとなく"],
+      "suggestion": "Use conclusion-first structure: conclusion, reason, example, result."
+    },
+    {
+      "risk": "Excessive humility",
+      "signals": ["only assisted", "just helped", "not much", "少しだけ", "自信がない"],
+      "suggestion": "State personal contribution factually without exaggeration."
+    },
+    {
+      "risk": "Over-assertion",
+      "signals": ["always", "perfect", "best", "全部", "絶対"],
+      "suggestion": "Balance confidence with evidence, limitations, and team context."
+    },
+    {
+      "risk": "Negative resignation reason",
+      "signals": ["bad manager", "toxic", "hate", "合わない", "不満"],
+      "suggestion": "Reframe job-change reasons around growth, contribution, and role fit."
+    },
+    {
+      "risk": "Missing individual ownership",
+      "signals": ["we did", "team did", "関わりました"],
+      "suggestion": "Separate team outcome from personal role, decisions, and deliverables."
+    }
+  ],
+  "positive_signals": [
+    "measurable outcomes",
+    "stakeholder alignment",
+    "documentation discipline",
+    "incident ownership",
+    "bilingual communication",
+    "client-facing reliability"
+  ]
+}

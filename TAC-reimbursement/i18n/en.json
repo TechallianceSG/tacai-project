@@ -1,0 +1,15 @@
+{
+  "app.title": "TAC Reimbursement",
+  "app.subtitle": "Japan employee reimbursement self-service",
+  "language.zh": "中文",
+  "language.ja": "日本語",
+  "language.en": "English",
+  "nav.portal": "Back to Portal",
+  "nav.portal_tooltip": "Return to TACAI Portal",
+  "nav.dashboard": "Dashboard",
+  "nav.claim_new": "New Claim",
+  "nav.claims": "Claims",
+  "nav.finance_review": "Finance Review",
+  "nav.finance_report": "Finance Report",
+  "nav.audit_logs": "Audit Logs"
+}

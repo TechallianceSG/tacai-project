@@ -1,0 +1,27 @@
+# MacBook pilot environment for remote consultant access
+# Source this file before starting the four required services, or copy these exports into your terminal profile/run script.
+
+export TACAI_PUBLIC_HOST="127.0.0.1"
+export TACAI_INTERNAL_HOST="127.0.0.1"
+
+# Public HTTPS domains used in browser redirects and Portal module links.
+export PORTAL_PUBLIC_BASE_URL="https://ai.tactokyo.com"
+export TIMESHEET_PUBLIC_BASE_URL="https://timesheet.tactokyo.com"
+export EXPENSE_PUBLIC_BASE_URL="https://expense.tactokyo.com"
+export USER_ADMIN_PUBLIC_BASE_URL="https://useradmin.tactokyo.com"
+
+# Internal service-to-service validation should stay on loopback while apps run on the same MacBook.
+export USER_ADMIN_INTERNAL_BASE_URL="http://127.0.0.1:8006"
+
+# HTTPS host allowlist for redirects and CSRF origin checks.
+export TACAI_ALLOWED_PUBLIC_HOSTS="ai.tactokyo.com,timesheet.tactokyo.com,expense.tactokyo.com,useradmin.tactokyo.com"
+
+# Shared login cookie across subdomains. Use only when all public access is HTTPS.
+export TACAI_COOKIE_DOMAIN=".tactokyo.com"
+export TACAI_COOKIE_SECURE="true"
+
+# Recommended service start commands in separate terminals:
+# cd /Users/terencewang/Documents/claude-project/TACAI-Core/User_admin && python3 backend/app.py --host 127.0.0.1 --port 8006
+# cd /Users/terencewang/Documents/claude-project/TACAI-Core/tacai-portal && python3 backend/app.py --host 127.0.0.1 --port 8005
+# cd /Users/terencewang/Documents/claude-project/TAC-timesheet && python3 backend/app.py --host 127.0.0.1 --port 8002
+# cd /Users/terencewang/Documents/claude-project/TAC-reimbursement && python3 backend/app.py --host 127.0.0.1 --port 8003
