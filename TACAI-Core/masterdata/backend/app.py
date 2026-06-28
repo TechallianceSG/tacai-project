@@ -752,6 +752,14 @@ def visible_teams() -> list[dict[str, Any]]:
     return [team for team in load_teams() if team.get("status") != "deleted"]
 
 
+def team_label(team: Optional[dict[str, Any]], lang: str = DEFAULT_LANG) -> str:
+    if not team:
+        return ""
+    code = str(team.get("team_code", ""))
+    name = localized_master_name(team, "team_name", "team_code", lang)
+    return f"{code} - {name}" if code and name and name != code else code or name
+
+
 def find_team(team_id: str, include_deleted: bool = False) -> Optional[dict[str, Any]]:
     for team in load_teams():
         if str(team.get("team_id", "")) == str(team_id):

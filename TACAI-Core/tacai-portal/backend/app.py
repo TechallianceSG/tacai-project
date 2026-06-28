@@ -30,7 +30,7 @@ MODULE_NAME = "tacai-portal"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8011, 8015}
+LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8011, 8012, 8015, 8016, 8017, 8018}
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 
 
@@ -54,6 +54,8 @@ def base_url_host(value: str) -> str:
 PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
+TACAIMSG_BASE_URL = public_base_url("TACAIMSG_PUBLIC_BASE_URL", 8012)
+TACAIMSG_MESSAGES_PATH = BASE_DIR.parent / "tacaimsg" / "database" / "messages.json"
 PUBLIC_ALLOWED_HOSTS = CONFIGURED_PUBLIC_HOSTS | {host for host in [base_url_host(PORTAL_BASE_URL), base_url_host(USER_ADMIN_BASE_URL)] if host}
 SUPPORTED_LANGUAGES = {"ja", "zh", "en"}
 DEFAULT_LANGUAGE = "ja"
@@ -79,7 +81,7 @@ TRANSLATIONS = {
         "dashboard.eyebrow": "Unified Entry",
         "dashboard.title": "ダッシュボード",
         "dashboard.hero_title": "TACAI Portal へようこそ",
-        "dashboard.hero_text": "TACAI Portal は Employee Mgmt、Timesheet、Payroll、Expense、User Management などの業務モジュールを一か所から開くための入口です。表示されるモジュールは User Management の権限設定に基づきます。",
+        "dashboard.hero_text": "TACAI Portal は Employee Mgmt、Timesheet、Payroll、Expense、Message Center、User Management などの業務モジュールを一か所から開くための入口です。表示されるモジュールは User Management の権限設定に基づきます。",
         "dashboard.empty": "利用可能なモジュールがありません。システム管理者へお問い合わせください。",
         "logout": "ログアウト",
         "future_module.eyebrow": "Module Entry",
@@ -111,7 +113,7 @@ TRANSLATIONS = {
         "dashboard.eyebrow": "统一入口",
         "dashboard.title": "仪表盘",
         "dashboard.hero_title": "欢迎使用 TACAI Portal",
-        "dashboard.hero_text": "TACAI Portal 是 Employee Mgmt、Timesheet、Payroll、Expense、User Management 等业务模块的统一入口。页面只会显示 User Management 权限设置允许你访问的模块。",
+        "dashboard.hero_text": "TACAI Portal 是 Employee Mgmt、Timesheet、Payroll、Expense、Message Center、User Management 等业务模块的统一入口。页面只会显示 User Management 权限设置允许你访问的模块。",
         "dashboard.empty": "当前没有可用模块。请联系系统管理员。",
         "logout": "退出登录",
         "future_module.eyebrow": "模块入口",
@@ -143,7 +145,7 @@ TRANSLATIONS = {
         "dashboard.eyebrow": "Unified Entry",
         "dashboard.title": "Dashboard",
         "dashboard.hero_title": "Welcome to TACAI Portal",
-        "dashboard.hero_text": "TACAI Portal is the unified entry point for Employee Mgmt, Timesheet, Payroll, Expense, User Management, and other TACAI modules. The modules shown here are filtered by User Management permissions.",
+        "dashboard.hero_text": "TACAI Portal is the unified entry point for Employee Mgmt, Timesheet, Payroll, Expense, Message Center, User Management, and other TACAI modules. The modules shown here are filtered by User Management permissions.",
         "dashboard.empty": "No available modules. Please contact a system administrator.",
         "logout": "Logout",
         "future_module.eyebrow": "Module Entry",
@@ -180,6 +182,38 @@ DEFAULT_MODULES = [
         "enabled": True,
     },
     {
+        "module_key": "tacaimsg",
+        "label": "Message Center",
+        "labels": {"ja": "メッセージセンター", "zh": "消息中心", "en": "Message Center"},
+        "description": "メッセージ通知・承認ワークフロー",
+        "descriptions": {
+            "ja": "メッセージ受信箱、承認ワークフロー、通知管理",
+            "zh": "消息收件箱、审批工作流、通知管理",
+            "en": "Message inbox, approval workflows, and notification management",
+        },
+        "url": f"{TACAIMSG_BASE_URL}/dashboard",
+        "status": "Connected module",
+        "statuses": {"ja": "連携済み", "zh": "已连接模块", "en": "Connected module"},
+        "required_permission": "tacaimsg.access",
+        "enabled": True,
+    },
+    {
+        "module_key": "selfservice",
+        "label": "Employee Self-Service",
+        "labels": {"ja": "従業員セルフサービス", "zh": "员工自助", "en": "Employee Self-Service"},
+        "description": "休暇申請・承認管理",
+        "descriptions": {
+            "ja": "休暇申請（私用・病気・振替）、上司承認、HR承認、自動タイムアウト",
+            "zh": "请假申请（事假/病假/调休）、主管审批、HR审批、超时自动处理",
+            "en": "Leave requests (personal/sick/compensatory), supervisor approval, HR approval, auto-timeout",
+        },
+        "url": f"{public_base_url('SELFSERVICE_PUBLIC_BASE_URL', 8018)}/dashboard",
+        "status": "Connected module",
+        "statuses": {"ja": "連携済み", "zh": "已连接模块", "en": "Connected module"},
+        "required_permission": "selfservice.access",
+        "enabled": True,
+    },
+    {
         "module_key": "user_management",
         "label": "User Management",
         "labels": {"ja": "ユーザー管理", "zh": "用户管理", "en": "User Management"},
@@ -207,6 +241,20 @@ def read_json(path: Path, default):
         return default
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def get_msg_center_unread_count(user_id: str) -> int:
+    """Read tacaimsg messages.json and count unread messages for a user.
+
+    Falls back gracefully if the messages file is unavailable.
+    """
+    try:
+        messages = read_json(TACAIMSG_MESSAGES_PATH, [])
+        return sum(1 for m in messages
+                   if str(m.get("recipient_user_id", "")) == str(user_id)
+                   and m.get("status") == "unread")
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return 0
 
 
 def normalize_lang(value: str | None) -> str:
@@ -293,7 +341,11 @@ def public_local_url(url: str) -> str:
             8008: "VENDOR_PAYABLES_PUBLIC_BASE_URL",
             8009: "CUSTOMER_BILLING_PUBLIC_BASE_URL",
             8011: "FILEADMIN_PUBLIC_BASE_URL",
+            8012: "TACAIMSG_PUBLIC_BASE_URL",
             8015: "TAC_PAYROLL_PUBLIC_BASE_URL",
+            8016: "TACAIPAYSG_PUBLIC_BASE_URL",
+            8017: "TACAIPAYJP_PUBLIC_BASE_URL",
+            8018: "SELFSERVICE_PUBLIC_BASE_URL",
         }
         env_name = env_by_port.get(parsed.port)
         if env_name and os.environ.get(env_name, "").strip():
@@ -446,6 +498,67 @@ python3 backend/app.py --host 127.0.0.1 --port 8006</pre>
     return page_shell(translate(lang, "unavailable.title"), body, lang)
 
 
+# Paths to User_admin database files (for role/permission resolution)
+_USER_ADMIN_DB = BASE_DIR.parent / "User_admin" / "database"
+_USER_ADMIN_USERS_PATH = _USER_ADMIN_DB / "users.json"
+_USER_ADMIN_ROLES_PATH = _USER_ADMIN_DB / "roles.json"
+_USER_ADMIN_PERMISSIONS_PATH = _USER_ADMIN_DB / "permissions.json"
+_USER_ADMIN_URM_PATH = _USER_ADMIN_DB / "user_role_mapping.json"
+_USER_ADMIN_RPM_PATH = _USER_ADMIN_DB / "role_permission_mapping.json"
+
+
+def _resolve_user_roles_and_permissions(user_id: str) -> tuple[list[str], list[str]]:
+    """Resolve role_keys and permission_keys for a user from User_admin mapping files."""
+    role_keys: list[str] = []
+    permission_keys: list[str] = []
+
+    # Build role_id → role_key lookup
+    role_id_to_key: dict[str, str] = {}
+    try:
+        roles = read_json(_USER_ADMIN_ROLES_PATH, [])
+        for r in roles:
+            rid = str(r.get("role_id", "")).strip()
+            rkey = str(r.get("role_key", "")).strip()
+            if rid and rkey:
+                role_id_to_key[rid] = rkey
+    except Exception:
+        pass
+
+    # Read user-role mappings
+    try:
+        urm = read_json(_USER_ADMIN_URM_PATH, [])
+        user_role_ids: set[str] = set()
+        for m in urm:
+            if str(m.get("user_id", "")) == user_id and m.get("active", True):
+                user_role_ids.add(str(m.get("role_id", "")).strip())
+        role_keys = [role_id_to_key[rid] for rid in user_role_ids if rid in role_id_to_key]
+    except Exception:
+        pass
+
+    # Read role-permission mappings and permission definitions
+    try:
+        rpm = read_json(_USER_ADMIN_RPM_PATH, [])
+        permissions = read_json(_USER_ADMIN_PERMISSIONS_PATH, [])
+        perm_id_to_key: dict[str, str] = {}
+        for p in permissions:
+            pid = str(p.get("permission_id", "")).strip()
+            pkey = str(p.get("permission_key", "")).strip()
+            if pid and pkey:
+                perm_id_to_key[pid] = pkey
+
+        # Get all permission_ids for the user's roles
+        user_role_ids = {rid for rid in role_id_to_key if role_id_to_key[rid] in role_keys}
+        for m in rpm:
+            if str(m.get("role_id", "")) in user_role_ids and m.get("active", True):
+                pkey = perm_id_to_key.get(str(m.get("permission_id", "")).strip(), "")
+                if pkey:
+                    permission_keys.append(pkey)
+    except Exception:
+        pass
+
+    return role_keys, permission_keys
+
+
 def validate_user_admin_session(session_id: str) -> dict | None:
     if not session_id:
         return None
@@ -465,6 +578,22 @@ def validate_user_admin_session(session_id: str) -> dict | None:
         user = data["user"]
         if isinstance(data.get("session"), dict):
             user["_session"] = data["session"]
+
+        # Enrich user with resolved roles and permissions from mapping files
+        # (User_admin may return empty roles/permissions on the user object itself,
+        #  because role assignments are stored in separate mapping tables.)
+        user_id = str(user.get("user_id", ""))
+        if user_id:
+            resolved_roles, resolved_perms = _resolve_user_roles_and_permissions(user_id)
+            if resolved_roles:
+                # Merge resolved roles with any existing ones
+                existing_roles = set(user.get("roles", []))
+                existing_roles.update(resolved_roles)
+                user["roles"] = list(existing_roles)
+            if resolved_perms:
+                existing_perms = set(user.get("permissions", []))
+                existing_perms.update(resolved_perms)
+                user["permissions"] = list(existing_perms)
         return user
     return None
 
@@ -504,12 +633,14 @@ def current_user_chip(user: dict, lang: str) -> str:
 
 
 def render_dashboard(user: dict, lang: str, current_path: str) -> str:
+    user_id = str(user.get("user_id", ""))
+    unread_count = get_msg_center_unread_count(user_id)
     modules = visible_modules_for(user)
     cards = "\n".join(
         f"""
       <a class="module-card" href="{html.escape(with_lang(item['url'], lang))}">
         <span class="status">{html.escape(module_status(item, lang))}</span>
-        <strong>{html.escape(module_label(item, lang))}</strong>
+        <strong>{html.escape(module_label(item, lang))}{' <span style="background:#dc2626;color:#fff;border-radius:12px;padding:1px 8px;font-size:0.75rem;margin-left:6px;font-weight:700">' + str(unread_count) + '</span>' if item.get('module_key') == 'tacaimsg' and unread_count > 0 else ''}</strong>
         <small>{html.escape(module_description(item, lang))}</small>
       </a>
 """
@@ -520,8 +651,12 @@ def render_dashboard(user: dict, lang: str, current_path: str) -> str:
     entity_label = current_entity_label(user, lang)
     entity_html = f'<span class="signed-in">{html.escape(translate(lang, "entity.current"))}: {html.escape(entity_label)}</span>' if entity_label else ""
     nav = "\n".join(
-        f'<a href="{html.escape(with_lang(item["url"], lang))}">{html.escape(module_label(item, lang))}</a>' for item in modules
+        f'<a href="{html.escape(with_lang(item["url"], lang))}">{html.escape(module_label(item, lang))}{" 🔴" if item.get("module_key") == "tacaimsg" and unread_count > 0 else ""}</a>' for item in modules
     )
+    # Unread badge in header
+    unread_badge = ""
+    if unread_count > 0:
+        unread_badge = f'<a href="{html.escape(with_lang(TACAIMSG_BASE_URL + "/messages/inbox", lang))}" style="background:#dc2626;color:#fff;border-radius:20px;padding:4px 12px;text-decoration:none;font-weight:700;font-size:0.85rem;display:inline-flex;align-items:center;gap:4px" title="Unread messages">📬 {unread_count}</a>'
     body = f"""
 <div class="app-shell">
   <aside class="sidebar">
@@ -538,6 +673,7 @@ def render_dashboard(user: dict, lang: str, current_path: str) -> str:
         <h1>{html.escape(translate(lang, 'dashboard.title'))}</h1>
       </div>
       <div class="topbar-actions">
+        {unread_badge}
         {entity_html}
         {language_switcher(current_path, lang)}
         {current_user_chip(user, lang)}

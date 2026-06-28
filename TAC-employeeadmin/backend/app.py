@@ -135,6 +135,13 @@ PROFILE_STATUSES = ["draft", "needs_review", "complete", "archived"]
 DEFAULT_MANAGER_EMPLOYEE_NUMBER = "ADMIN-001"
 GENDERS = ["", "male", "female", "other", "prefer_not_to_say"]
 SALARY_TYPES = ["", "monthly", "hourly", "annual", "daily"]
+SUPPORTED_CURRENCIES = ["SGD", "USD", "CNY", "INR", "TWD", "JPY"]
+# salary_type -> required wage field path mapping for data completeness
+SALARY_TYPE_REQUIRED_WAGE_FIELD: dict[str, str] = {
+    "monthly": "payroll.monthly_base_salary",
+    "daily": "payroll.daily_wage",
+    "hourly": "payroll.hourly_wage",
+}
 BANK_ACCOUNT_TYPES = ["", "ordinary", "current", "savings"]
 DISPATCH_CONTRACT_TYPES = ["", "worker_dispatch", "ses", "contract", "other"]
 JAPANESE_LEVELS = ["", "native", "N1", "N2", "N3", "N4", "N5", "none"]
@@ -233,6 +240,10 @@ PAYROLL_FIELD_PATHS = [
     "payroll.bank.account_number",
     "payroll.bank.account_holder",
     "payroll.salary_type",
+    "payroll.payroll_currency",
+    "payroll.monthly_base_salary",
+    "payroll.daily_wage",
+    "payroll.hourly_wage",
     "payroll.salary_amount_yen",
     "payroll.transportation_allowance_yen",
     "payroll.bonus_eligible",
@@ -371,8 +382,16 @@ FIELD_PATHS = (
     + DOCUMENT_FIELD_PATHS
     + HISTORY_FIELD_PATHS
 )
+BANK_FIELD_PATHS = [
+    "payroll.bank.bank_name",
+    "payroll.bank.branch_name",
+    "payroll.bank.swift_code",
+    "payroll.bank.account_type",
+    "payroll.bank.account_number",
+    "payroll.bank.account_holder",
+]
 METADATA_FORM_FIELD_PATHS = ["metadata.profile_status"]
-PHASE1_FORM_FIELD_PATHS = ["employee_number"] + PROFILE_FIELD_PATHS + EMPLOYMENT_FIELD_PATHS + METADATA_FORM_FIELD_PATHS
+PHASE1_FORM_FIELD_PATHS = ["employee_number"] + PROFILE_FIELD_PATHS + EMPLOYMENT_FIELD_PATHS + BANK_FIELD_PATHS + METADATA_FORM_FIELD_PATHS
 DATE_FIELD_PATHS = [
     "profile.date_of_birth",
     "employment.join_date",
@@ -387,7 +406,7 @@ DATE_FIELD_PATHS = [
     "dispatch_compliance.dispatch_start_date",
     "dispatch_compliance.dispatch_end_date",
 ]
-MONEY_FIELD_PATHS = ["payroll.salary_amount_yen", "payroll.transportation_allowance_yen"]
+MONEY_FIELD_PATHS = ["payroll.monthly_base_salary", "payroll.daily_wage", "payroll.hourly_wage", "payroll.salary_amount_yen", "payroll.transportation_allowance_yen"]
 BOOLEAN_FIELD_PATHS = [
     "payroll.bonus_eligible",
     "payroll.social_insurance_enrolled",
@@ -439,7 +458,7 @@ EMPLOYMENT_DETAIL_GROUPS = [
 ]
 PAYROLL_DETAIL_GROUPS = [
     ("detail.group.bank", ["payroll.bank.bank_name", "payroll.bank.branch_name", "payroll.bank.swift_code", "payroll.bank.account_type", "payroll.bank.account_number", "payroll.bank.account_holder"]),
-    ("detail.group.salary", ["payroll.salary_type", "payroll.salary_amount_yen", "payroll.transportation_allowance_yen", "payroll.bonus_eligible"]),
+    ("detail.group.salary", ["payroll.salary_type", "payroll.payroll_currency", "payroll.monthly_base_salary", "payroll.daily_wage", "payroll.hourly_wage", "payroll.salary_amount_yen", "payroll.transportation_allowance_yen", "payroll.bonus_eligible"]),
     ("detail.group.insurance", ["payroll.social_insurance_enrolled", "payroll.pension_enrolled", "payroll.employment_insurance_enrolled"]),
     ("detail.group.notes", ["payroll.notes"]),
 ]
@@ -998,6 +1017,10 @@ def default_employee() -> dict[str, Any]:
                 "account_holder": "",
             },
             "salary_type": "monthly",
+            "payroll_currency": "SGD",
+            "monthly_base_salary": "",
+            "daily_wage": "",
+            "hourly_wage": "",
             "salary_amount_yen": "",
             "transportation_allowance_yen": "",
             "bonus_eligible": False,
@@ -3531,12 +3554,23 @@ def validate_section(employee: dict[str, Any], section_key: str, messages: dict[
         salary_type = str(get_nested(employee, "payroll.salary_type", ""))
         if salary_type not in SALARY_TYPES:
             errors.append(f"{field_label(messages, 'payroll.salary_type')}: {t(messages, 'validation.invalid_salary_type')}")
+        # currency validation
+        payroll_currency = str(get_nested(employee, "payroll.payroll_currency", "")).strip().upper()
+        if payroll_currency:
+            if payroll_currency not in SUPPORTED_CURRENCIES:
+                errors.append(f"{field_label(messages, 'payroll.payroll_currency')}: {t(messages, 'validation.invalid_currency')}")
+        # conditional wage field validation based on salary_type
+        if salary_type in SALARY_TYPE_REQUIRED_WAGE_FIELD:
+            required_wage_path = SALARY_TYPE_REQUIRED_WAGE_FIELD[salary_type]
+            wage_value = str(get_nested(employee, required_wage_path, "")).strip()
+            if not wage_value:
+                errors.append(f"{field_label(messages, required_wage_path)}: {t(messages, 'validation.wage_required_for_salary_type')}")
         account_type = str(get_nested(employee, "payroll.bank.account_type", ""))
         if account_type not in BANK_ACCOUNT_TYPES:
             errors.append(f"{field_label(messages, 'payroll.bank.account_type')}: {t(messages, 'validation.invalid_bank_account_type')}")
         for path in MONEY_FIELD_PATHS:
             value = str(get_nested(employee, path, "")).strip()
-            if not is_non_negative_integer(value):
+            if value and not is_non_negative_integer(value):
                 errors.append(f"{field_label(messages, path)}: {t(messages, 'validation.invalid_money')}")
 
     if section_key == "visa":
@@ -3988,7 +4022,18 @@ PAYROLL_READY_EMPLOYMENT_STATUSES = {"active", "probation"}
 
 
 def payroll_readiness_required_paths(employee: dict[str, Any] | None = None) -> list[str]:
-    return list(IMPORT_REQUIRED_FIELD_PATHS)
+    paths = list(IMPORT_REQUIRED_FIELD_PATHS)
+    # payroll_currency is required for payroll readiness
+    if "payroll.payroll_currency" not in paths:
+        paths.append("payroll.payroll_currency")
+    # conditional wage field based on salary_type
+    if employee:
+        salary_type = str(get_nested(employee, "payroll.salary_type", "")).strip()
+        if salary_type in SALARY_TYPE_REQUIRED_WAGE_FIELD:
+            wage_path = SALARY_TYPE_REQUIRED_WAGE_FIELD[salary_type]
+            if wage_path not in paths:
+                paths.append(wage_path)
+    return paths
 
 
 def payroll_readiness_missing_fields(employee: dict[str, Any]) -> list[str]:
@@ -4035,11 +4080,37 @@ def report_payroll_readiness(employees: list[dict[str, Any]]) -> list[dict[str, 
 def payroll_employee_payload(employee: dict[str, Any], context: dict[str, dict[str, str]] | None = None) -> dict[str, Any]:
     base = timesheet_employee_payload(employee, context)
     score = payroll_readiness_score(employee)
+    payroll_bank = get_nested(employee, "payroll.bank", {})
+    if not isinstance(payroll_bank, dict):
+        payroll_bank = {}
+    salary_amount = get_nested(employee, "payroll.salary_amount_yen", "")
+    monthly_base = get_nested(employee, "payroll.monthly_base_salary", "")
+    daily_wage = get_nested(employee, "payroll.daily_wage", "")
+    hourly_wage = get_nested(employee, "payroll.hourly_wage", "")
+    payroll_payload = {
+        "salary_type": str(get_nested(employee, "payroll.salary_type", "")),
+        "payroll_currency": str(get_nested(employee, "payroll.payroll_currency", "SGD")),
+        "salary_amount_yen": salary_amount,
+        "monthly_base_salary": monthly_base,
+        "daily_wage": daily_wage,
+        "hourly_wage": hourly_wage,
+        "base_salary": monthly_base or daily_wage or hourly_wage or salary_amount,
+        "basic_salary": monthly_base or daily_wage or hourly_wage or salary_amount,
+        "hourly_rate": get_nested(employee, "payroll.hourly_rate", hourly_wage),
+        "daily_rate": get_nested(employee, "payroll.daily_rate", daily_wage),
+        "transportation_allowance_yen": get_nested(employee, "payroll.transportation_allowance_yen", ""),
+        "bank_name": str(payroll_bank.get("bank_name", "")),
+        "bank_account_name": str(payroll_bank.get("account_holder", "")),
+        "bank_account_number": str(payroll_bank.get("account_number", "")),
+        "bank": dict(payroll_bank),
+        "notes": str(get_nested(employee, "payroll.notes", "")),
+    }
     base.update({
         "country_code": str(get_nested(employee, "employment.country_code", "")),
         "work_country": str(get_nested(employee, "employment.work_country", "")),
         "business_line": str(get_nested(employee, "employment.business_line", "")),
         "profile_status": str(get_nested(employee, "metadata.profile_status", "")),
+        "payroll": payroll_payload,
         "payroll_ready": bool(score["ready"]),
         "payroll_readiness_status": score["status"],
         "payroll_readiness_percent": score["percent"],
@@ -4052,6 +4123,7 @@ def payroll_employee_api_payload(query: dict[str, list[str]], session_id: str = 
     source_employees = visible_employees(load_employees())
     context, _error = masterdata_context_for_employees(session_id, lang, source_employees) if session_id else (empty_masterdata_context(), None)
     entity_filter = str(query.get("entity_id", [""])[0]).strip()
+    department_filter = str((query.get("department_id") or query.get("department") or [""])[0]).strip().casefold()
     country_filter = normalize_country_code(query.get("country_code", [""])[0])
     q = str(query.get("q", [""])[0]).strip().casefold()
     employees = []
@@ -4061,7 +4133,10 @@ def payroll_employee_api_payload(query: dict[str, list[str]], session_id: str = 
             continue
         if country_filter and normalize_country_code(payload.get("country_code", "")) != country_filter:
             continue
-        searchable = " ".join(str(payload.get(key, "")) for key in ["employee_id", "employee_number", "employee_no", "display_name", "email", "entity_id", "entity_label", "department_label", "country_code", "work_country", "business_line"]).casefold()
+        department_values = " ".join(str(payload.get(key, "")) for key in ["department_id", "department", "department_label"]).casefold()
+        if department_filter and department_filter not in department_values:
+            continue
+        searchable = " ".join(str(payload.get(key, "")) for key in ["employee_id", "employee_number", "employee_no", "display_name", "email", "entity_id", "entity_label", "entity_name", "department_id", "department", "department_label", "team_id", "team_label", "country_code", "work_country", "business_line"]).casefold()
         if q and q not in searchable:
             continue
         employees.append(payload)
@@ -4152,17 +4227,24 @@ def unique_department_ids(employees: list[dict[str, Any]]) -> list[str]:
     return sorted(department for department in departments if department)
 
 
+def unique_team_ids(employees: list[dict[str, Any]]) -> list[str]:
+    teams = {employment_team_id(employee) for employee in visible_employees(employees)}
+    return sorted(team for team in teams if team)
+
+
 def filter_employees(employees: list[dict[str, Any]], query: dict[str, list[str]]) -> list[dict[str, Any]]:
     keyword = query.get("q", [""])[0].strip().lower()
     entity_id = query.get("entity_id", [""])[0].strip()
     country_code = normalize_country_code(query.get("country_code", [""])[0])
     department = query.get("department_id", query.get("department", [""]))[0].strip()
+    team_id = query.get("team_id", [""])[0].strip()
     status = query.get("status", [""])[0].strip()
     show_resigned = query.get("show_resigned", [""])[0].strip() == "1"
     employment_type = query.get("employment_type", [""])[0].strip()
     japanese_level = query.get("japanese_level", [""])[0].strip()
     english_level = query.get("english_level", [""])[0].strip()
     skill = query.get("skill", [""])[0].strip().lower()
+    new_joiners_month = query.get("new_joiners_month", [""])[0].strip() == "1"
     results = visible_employees(employees)
     if not show_resigned and status != "resigned":
         results = [employee for employee in results if get_nested(employee, "employment.status") != "resigned"]
@@ -4186,6 +4268,8 @@ def filter_employees(employees: list[dict[str, Any]], query: dict[str, list[str]
         results = [employee for employee in results if employment_country_code(employee) == country_code]
     if department:
         results = [employee for employee in results if employment_department_id(employee) == department]
+    if team_id:
+        results = [employee for employee in results if employment_team_id(employee) == team_id]
     if status:
         results = [employee for employee in results if get_nested(employee, "employment.status") == status]
     if employment_type:
@@ -4210,6 +4294,14 @@ def filter_employees(employees: list[dict[str, Any]], query: dict[str, list[str]
                 ]
             ).lower()
         ]
+    if new_joiners_month:
+        today = date.today()
+        filtered: list[dict[str, Any]] = []
+        for employee in results:
+            parsed = parse_date(str(get_nested(employee, "employment.join_date", "")))
+            if parsed and parsed.year == today.year and parsed.month == today.month:
+                filtered.append(employee)
+        results = filtered
     return sorted(results, key=lambda employee: (get_employee_number(employee).casefold(), str(employee.get("employee_id", ""))))
 
 
@@ -5279,6 +5371,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 </section>
 <section class="card table-scroll">
   <table><thead><tr><th>ID</th><th>{h(t(messages, 'onboarding.candidate_name'))}</th><th>{h(t(messages, 'onboarding.candidate_email'))}</th><th>{h(t(messages, 'onboarding.planned_start_date'))}</th><th>{h(field_label(messages, 'employment.employment_type'))}</th><th>{h(t(messages, 'onboarding.status'))}</th><th>{h(t(messages, 'onboarding.email_status'))}</th></tr></thead><tbody>{table}</tbody></table>
+  <div class="helper-text" style="margin-top:8px">{len(requests)} request(s) total</div>
 </section>
 """
         self.send_html(200, t(messages, "onboarding.title"), body, lang, messages)
@@ -6045,7 +6138,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 <section class="grid">
   <a class="card metric-card" href="{h(url_with_lang('/employees', lang))}"><div class="muted">{h(t(messages, 'dashboard.total_employees'))}</div><p class="metric">{metrics['total_employees']}</p></a>
   <a class="card metric-card" href="{h(url_with_lang('/employees', lang, {'status': 'active'}))}"><div class="muted">{h(t(messages, 'dashboard.active_employees'))}</div><p class="metric">{metrics['active_employees']}</p></a>
-  <a class="card metric-card" href="{h(url_with_lang('/employees', lang))}"><div class="muted">{h(t(messages, 'dashboard.new_joiners'))}</div><p class="metric">{metrics['new_joiners']}</p></a>
+  <a class="card metric-card" href="{h(url_with_lang('/employees', lang, {'new_joiners_month': '1'}))}"><div class="muted">{h(t(messages, 'dashboard.new_joiners'))}</div><p class="metric">{metrics['new_joiners']}</p></a>
   <a class="card metric-card" href="{h(url_with_lang('/reports/dispatch-assignments', lang))}"><div class="muted">{h(t(messages, 'dashboard.dispatch_employees'))}</div><p class="metric">{metrics['dispatch_employees']}</p></a>
   <a class="card metric-card" href="{h(url_with_lang('/reports/visa-expiry', lang))}"><div class="muted">{h(t(messages, 'dashboard.foreign_employees'))}</div><p class="metric">{metrics['foreign_employees']}</p></a>
   <a class="card metric-card" href="{h(url_with_lang('/reports/visa-expiry', lang))}"><div class="muted">{h(t(messages, 'dashboard.visa_expiry_alerts'))}</div><p class="metric">{metrics['visa_expiry_alerts']}</p></a>
@@ -6081,6 +6174,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
     <thead><tr><th>{h(field_label(messages, 'employee_number'))}</th><th>{h(field_label(messages, 'profile.name.display_name'))}</th><th>{h(t(messages, 'dashboard.alert_type'))}</th><th>{h(t(messages, 'dashboard.alert_date'))}</th></tr></thead>
     <tbody>{alert_table}</tbody>
   </table>
+  <div class="helper-text" style="margin-top:8px">{len(alerts)} alert(s) total</div>
 </section>
 """
         self.send_html(200, t(messages, "dashboard.title"), body, lang, messages)
@@ -6162,7 +6256,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.missing_required_data.title", "reports.missing_required_data.description", table)
+        self.send_report_page(lang, messages, "reports.missing_required_data.title", "reports.missing_required_data.description", table, count=len(rows))
 
     def send_visa_expiry_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6184,7 +6278,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.visa_expiry.title", "reports.visa_expiry.description", table)
+        self.send_report_page(lang, messages, "reports.visa_expiry.title", "reports.visa_expiry.description", table, count=len(rows))
 
     def send_probation_ending_report(self, lang: str, messages: dict[str, str]) -> None:
         employees = load_employees()
@@ -6207,7 +6301,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.probation_ending.title", "reports.probation_ending.description", table)
+        self.send_report_page(lang, messages, "reports.probation_ending.title", "reports.probation_ending.description", table, count=len(rows))
 
     def send_labor_contract_renewal_report(self, lang: str, messages: dict[str, str]) -> None:
         employees = load_employees()
@@ -6232,7 +6326,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.labor_contract_renewals.title", "reports.labor_contract_renewals.description", table)
+        self.send_report_page(lang, messages, "reports.labor_contract_renewals.title", "reports.labor_contract_renewals.description", table, count=len(rows))
 
     def send_dispatch_assignment_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6255,7 +6349,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.dispatch_assignments.title", "reports.dispatch_assignments.description", table)
+        self.send_report_page(lang, messages, "reports.dispatch_assignments.title", "reports.dispatch_assignments.description", table, count=len(rows))
 
     def send_document_expiry_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6277,7 +6371,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.document_expiry.title", "reports.document_expiry.description", table)
+        self.send_report_page(lang, messages, "reports.document_expiry.title", "reports.document_expiry.description", table, count=len(rows))
 
     def send_missing_documents_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6297,7 +6391,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.missing_documents.title", "reports.missing_documents.description", table)
+        self.send_report_page(lang, messages, "reports.missing_documents.title", "reports.missing_documents.description", table, count=len(rows))
 
     def send_data_quality_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6314,7 +6408,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.no_data_quality_issues"),
         )
-        self.send_report_page(lang, messages, "reports.data_quality.title", "reports.data_quality.description", table)
+        self.send_report_page(lang, messages, "reports.data_quality.title", "reports.data_quality.description", table, count=len(rows))
 
     def send_data_completion_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6338,7 +6432,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.data_completion.title", "reports.data_completion.description", table)
+        self.send_report_page(lang, messages, "reports.data_completion.title", "reports.data_completion.description", table, count=len(rows))
 
     def send_payroll_readiness_report(self, lang: str, messages: dict[str, str]) -> None:
         employees = load_employees()
@@ -6366,7 +6460,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.payroll_readiness.title", "reports.payroll_readiness.description", table)
+        self.send_report_page(lang, messages, "reports.payroll_readiness.title", "reports.payroll_readiness.description", table, count=len(rows))
 
     def send_required_document_matrix_report(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
@@ -6387,9 +6481,10 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             rows,
             t(messages, "reports.empty"),
         )
-        self.send_report_page(lang, messages, "reports.required_document_matrix.title", "reports.required_document_matrix.description", table)
+        self.send_report_page(lang, messages, "reports.required_document_matrix.title", "reports.required_document_matrix.description", table, count=len(rows))
 
-    def send_report_page(self, lang: str, messages: dict[str, str], title_key: str, description_key: str, table_html: str) -> None:
+    def send_report_page(self, lang: str, messages: dict[str, str], title_key: str, description_key: str, table_html: str, count: int | None = None) -> None:
+        count_html = f"<div class='helper-text' style='margin-top:8px'>{count} record(s) total</div>" if count is not None else ""
         body = f"""
 <section class="card">
   <div class="actions">
@@ -6401,6 +6496,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 </section>
 <section class="card">
   {table_html}
+  {count_html}
 </section>
 """
         self.send_html(200, t(messages, title_key), body, lang, messages)
@@ -6561,12 +6657,15 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
         entity_id = query.get("entity_id", [""])[0]
         country_code = normalize_country_code(query.get("country_code", [""])[0])
         department = query.get("department_id", query.get("department", [""]))[0]
+        team_id = query.get("team_id", [""])[0]
         status = query.get("status", [""])[0]
         show_resigned = query.get("show_resigned", [""])[0] == "1"
         employment_type = query.get("employment_type", [""])[0]
         japanese_level = query.get("japanese_level", [""])[0]
         english_level = query.get("english_level", [""])[0]
         skill = query.get("skill", [""])[0]
+        new_joiners_month = query.get("new_joiners_month", [""])[0] == "1"
+        has_filter = bool(q or entity_id or country_code or department or team_id or status or show_resigned or employment_type or japanese_level or english_level or skill or new_joiners_month)
         can_view = has_permission(user, "employee_management.access")
         can_edit = has_permission(user, "employee_management.edit")
         rows = []
@@ -6589,6 +6688,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
   <td>{h(get_nested(employee, 'profile.email'))}</td>
   <td>{h(employment_entity_display(employee, context))}</td>
   <td>{h(employment_department_display(employee, context))}</td>
+  <td>{h(employment_team_display(employee, context))}</td>
   <td>{h(get_nested(employee, 'employment.position'))}</td>
   <td>{h(enum_label(messages, 'employment_type', str(get_nested(employee, 'employment.employment_type'))))}</td>
   <td><span class="badge">{h(enum_label(messages, 'status', str(get_nested(employee, 'employment.status'))))}</span></td>
@@ -6599,7 +6699,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 </tr>
 """
             )
-        table_body = "".join(rows) if rows else f"<tr><td colspan=\"12\" class=\"empty\">{h(t(messages, 'employee.list.empty'))}</td></tr>"
+        table_body = "".join(rows) if rows else f"<tr><td colspan=\"13\" class=\"empty\">{h(t(messages, 'employee.list.empty'))}</td></tr>"
         entity_options = "".join(
             f"<option value=\"{h(value)}\"{selected(entity_id, value)}>{h(masterdata_context_label(context, 'entities', value))}</option>"
             for value in unique_entity_ids(employees)
@@ -6614,6 +6714,14 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
         department_options = "".join(
             f"<option value=\"{h(value)}\"{selected(department, value)}>{h(masterdata_context_label(context, 'departments', value))}</option>"
             for value in unique_department_ids(department_option_employees)
+        )
+        team_option_employees = [
+            employee for employee in department_option_employees
+            if not department or employment_department_id(employee) == department
+        ]
+        team_options = "".join(
+            f"<option value=\"{h(value)}\"{selected(team_id, value)}>{h(masterdata_context_label(context, 'teams', value))}</option>"
+            for value in unique_team_ids(team_option_employees)
         )
         masterdata_warning = f'<p class="muted">{h(t(messages, "validation.masterdata_unavailable"))}</p>' if masterdata_error else ""
         status_options = "".join(
@@ -6649,6 +6757,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
     <div class="form-field"><label for="entity">{h(field_label(messages, 'employment.entity_id'))}</label><select id="entity" name="entity_id"><option value="">{h(t(messages, 'filter.all'))}</option>{entity_options}</select></div>
     <div class="form-field"><label for="country_code">{h(field_label(messages, 'employment.country_code'))}</label><select id="country_code" name="country_code"><option value="">{h(t(messages, 'filter.all'))}</option>{country_options}</select></div>
     <div class="form-field"><label for="department">{h(field_label(messages, 'employment.department_id'))}</label><select id="department" name="department_id"><option value="">{h(t(messages, 'filter.all'))}</option>{department_options}</select></div>
+    <div class="form-field"><label for="team">{h(field_label(messages, 'employment.team_id'))}</label><select id="team" name="team_id"><option value="">{h(t(messages, 'filter.all'))}</option>{team_options}</select></div>
     <div class="form-field"><label for="status">{h(field_label(messages, 'employment.status'))}</label><select id="status" name="status"><option value="">{h(t(messages, 'filter.all'))}</option>{status_options}</select></div>
     <div class="form-field checkbox-field"><label for="show_resigned"><input id="show_resigned" type="checkbox" name="show_resigned" value="1"{show_resigned_checked}> {h(t(messages, 'filter.show_resigned'))}</label></div>
     <div class="form-field"><label for="employment_type">{h(field_label(messages, 'employment.employment_type'))}</label><select id="employment_type" name="employment_type"><option value="">{h(t(messages, 'filter.all'))}</option>{type_options}</select></div>
@@ -6663,10 +6772,11 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
   <p class="muted">{h(t(messages, 'employee.list.resigned_hidden_note'))}</p>
   <table>
     <thead><tr>
-      <th>{h(field_label(messages, 'employee_number'))}</th><th>{h(field_label(messages, 'profile.name.display_name'))}</th><th>{h(field_label(messages, 'profile.email'))}</th><th>{h(field_label(messages, 'employment.entity_id'))}</th><th>{h(field_label(messages, 'employment.department_id'))}</th><th>{h(field_label(messages, 'employment.position'))}</th><th>{h(field_label(messages, 'employment.employment_type'))}</th><th>{h(field_label(messages, 'employment.status'))}</th><th>{h(field_label(messages, 'language_profile.japanese_level'))}</th><th>{h(field_label(messages, 'language_profile.english_level'))}</th><th>{h(field_label(messages, 'skills_profile.primary_skill'))}</th><th>{h(t(messages, 'table.actions'))}</th>
+      <th>{h(field_label(messages, 'employee_number'))}</th><th>{h(field_label(messages, 'profile.name.display_name'))}</th><th>{h(field_label(messages, 'profile.email'))}</th><th>{h(field_label(messages, 'employment.entity_id'))}</th><th>{h(field_label(messages, 'employment.department_id'))}</th><th>{h(field_label(messages, 'employment.team_id'))}</th><th>{h(field_label(messages, 'employment.position'))}</th><th>{h(field_label(messages, 'employment.employment_type'))}</th><th>{h(field_label(messages, 'employment.status'))}</th><th>{h(field_label(messages, 'language_profile.japanese_level'))}</th><th>{h(field_label(messages, 'language_profile.english_level'))}</th><th>{h(field_label(messages, 'skills_profile.primary_skill'))}</th><th>{h(t(messages, 'table.actions'))}</th>
     </tr></thead>
     <tbody>{table_body}</tbody>
   </table>
+  <div class="helper-text" style="margin:8px 0 0">{f'Showing {len(results)} of {len(employees)} employees (filtered)' if has_filter else f'{len(results)} employee(s) total'}</div>
 </section>
 """
         self.send_html(200, t(messages, "employee.list.title"), body, lang, messages)
@@ -7251,10 +7361,16 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 </div>
 """
 
-    def render_form_actions(self, messages: dict[str, str], cancel_url: str) -> str:
+    def render_form_actions(self, messages: dict[str, str], cancel_url: str, detail_url: str | None = None) -> str:
+        detail_button = (
+            f'<a class="button secondary" href="{h(detail_url)}">{h(t(messages, "action.detail_inquiry"))}</a>'
+            if detail_url
+            else ""
+        )
         return f"""
 <div class="form-actions">
   <button type="submit">{h(t(messages, 'action.save'))}</button>
+  {detail_button}
   <a class="button light" href="{h(cancel_url)}">{h(t(messages, 'action.cancel'))}</a>
 </div>
 """
@@ -7267,6 +7383,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
         title_key = "employee.edit.title" if is_edit else "employee.create.title"
         description_key = "employee.form.edit_description" if is_edit else "employee.form.create_description"
         cancel_url = url_with_lang(f"/employees/{quote(employee_id)}" if is_edit else "/employees", lang)
+        detail_url = url_with_lang(f"/employees/{quote(employee_id)}", lang) if is_edit and employee_id else None
         profile_name = self.render_field_group(
             messages,
             "form.group.name",
@@ -7325,12 +7442,12 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             messages,
             "form.group.employment_basics",
             f"""
+            {self.render_employee_masterdata_fields(lang, messages, employee, field_errors)}
             {self.render_select(messages, employee, 'employment.country_code', [""] + COUNTRY_CODES, 'country', required=True, field_errors=field_errors)}
             {self.render_select(messages, employee, 'employment.work_country', [""] + COUNTRY_CODES, 'country', required=True, field_errors=field_errors)}
             {self.render_select(messages, employee, 'employment.business_line', [""] + BUSINESS_LINES, 'business_line', required=True, field_errors=field_errors)}
             {self.render_input(messages, employee, 'employment.join_date', input_type='date', required=True, field_errors=field_errors)}
             {self.render_select(messages, employee, 'employment.employment_type', EMPLOYMENT_TYPES, 'employment_type', required=True, field_errors=field_errors)}
-            {self.render_employee_masterdata_fields(lang, messages, employee, field_errors)}
             {self.render_input(messages, employee, 'employment.position')}
             {self.render_input(messages, employee, 'employment.manager_employee_id', field_errors=field_errors)}
             """,
@@ -7364,6 +7481,18 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             {self.render_textarea(messages, employee, 'employment.resignation.reason')}
             """,
         )
+        bank_info = self.render_field_group(
+            messages,
+            "form.group.payroll_bank",
+            f"""
+            {self.render_input(messages, employee, 'payroll.bank.bank_name')}
+            {self.render_input(messages, employee, 'payroll.bank.branch_name')}
+            {self.render_input(messages, employee, 'payroll.bank.swift_code')}
+            {self.render_select(messages, employee, 'payroll.bank.account_type', BANK_ACCOUNT_TYPES, 'bank_account_type')}
+            {self.render_input(messages, employee, 'payroll.bank.account_number')}
+            {self.render_input(messages, employee, 'payroll.bank.account_holder')}
+            """,
+        )
         body = f"""
 <section class="object-page">
   {self.render_form_header(messages, title_key, description_key, get_employee_number(employee) if is_edit else "")}
@@ -7372,7 +7501,8 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
     <p class="required-note">{h(t(messages, 'employee.form.required_note'))}</p>
     {self.render_form_section(messages, 'section.profile', profile_name + profile_personal + profile_contact + profile_address + profile_emergency)}
     {self.render_form_section(messages, 'section.employment', employment_basics + employment_labor_contract + employment_assignment + employment_resignation)}
-    {self.render_form_actions(messages, cancel_url)}
+    {self.render_form_section(messages, 'section.bank', bank_info)}
+    {self.render_form_actions(messages, cancel_url, detail_url)}
   </form>
 </section>
 """
@@ -7397,6 +7527,10 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
             """)
             compensation = self.render_field_group(messages, "form.group.payroll_compensation", f"""
             {self.render_select(messages, employee, 'payroll.salary_type', SALARY_TYPES, 'salary_type')}
+            {self.render_select(messages, employee, 'payroll.payroll_currency', SUPPORTED_CURRENCIES, 'currency')}
+            {self.render_input(messages, employee, 'payroll.monthly_base_salary', input_type='number')}
+            {self.render_input(messages, employee, 'payroll.daily_wage', input_type='number')}
+            {self.render_input(messages, employee, 'payroll.hourly_wage', input_type='number')}
             {self.render_input(messages, employee, 'payroll.salary_amount_yen', input_type='number')}
             {self.render_input(messages, employee, 'payroll.transportation_allowance_yen', input_type='number')}
             {self.render_checkbox(messages, employee, 'payroll.bonus_eligible')}
@@ -8052,8 +8186,9 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
 
     def send_audit_logs_page(self, lang: str, messages: dict[str, str]) -> None:
         rows = []
+        all_logs = load_audit_logs()
         employees_by_id = {str(employee.get("employee_id", "")): employee for employee in load_employees()}
-        for audit in reversed(load_audit_logs()):
+        for audit in reversed(all_logs):
             fields = audit.get("changed_fields", [])
             if isinstance(fields, list):
                 fields_text = ", ".join(str(field) for field in fields)
@@ -8089,6 +8224,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
     </tr></thead>
     <tbody>{table_body}</tbody>
   </table>
+  <div class="helper-text" style="margin-top:8px">Showing latest {len(rows)} of {len(all_logs)} audit entries</div>
 </section>
 """
         self.send_html(200, t(messages, "audit.title"), body, lang, messages)

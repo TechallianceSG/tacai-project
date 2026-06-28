@@ -1,0 +1,15 @@
+{
+  "app.title": "TACAI Pay SG 新加坡薪资",
+  "language": "简体中文",
+  "nav.dashboard": "仪表盘",
+  "nav.master": "薪资主数据",
+  "nav.batches": "员工工资发放",
+  "nav.monthly_sheets": "月度薪资核算",
+  "nav.calendars": "薪资日历",
+  "nav.release": "工资发放",
+  "nav.actuarial": "工资精算",
+  "nav.reports": "报表",
+  "nav.parameters": "参数",
+  "nav.audit": "审计",
+  "note": "主要 UI 文案当前内置在 backend/app.py，本文件作为外部引用补充。"
+}

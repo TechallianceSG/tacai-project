@@ -112,7 +112,26 @@ def main() -> None:
         calculated = app.calculate_batch(jp_batch["batch_id"], {"user": "smoke_test"})
         assert calculated["records"][0]["contract_snapshot"]["contract_start_date"] == "2099-01-01", calculated["records"][0]
         assert calculated["records"][0]["salary_calculation_rule_snapshot"]["rule_type"] == "monthly_fixed", calculated["records"][0]
+        assert calculated["records"][0]["earnings"]["overtime_pay"] > 0, calculated["records"][0]
+        assert calculated["records"][0]["deductions"]["health_insurance"] > 0, calculated["records"][0]
+        assert any("JP overtime calculated" in message for message in calculated["records"][0]["calculation_messages"]), calculated["records"][0]
         record_id = calculated["records"][0]["payroll_record_id"]
+
+        sg_loaded = app.load_employees_for_batch(sg_batch["batch_id"], {"user": "smoke_test", "allow_salary_master_fallback": True})
+        assert sg_loaded["loaded_count"] == 1, sg_loaded
+        sg_calculated = app.calculate_batch(sg_batch["batch_id"], {"user": "smoke_test"})
+        assert sg_calculated["records"][0]["deductions"]["cpf_employee"] == 800.0, sg_calculated["records"][0]
+        assert sg_calculated["records"][0]["employer_costs"]["cpf_employer"] == 1700.0, sg_calculated["records"][0]
+        assert any("SG CPF calculated" in message for message in sg_calculated["records"][0]["calculation_messages"]), sg_calculated["records"][0]
+
+        cn_loaded = app.load_employees_for_batch(cn_batch["batch_id"], {"user": "smoke_test", "allow_salary_master_fallback": True})
+        assert cn_loaded["loaded_count"] == 1, cn_loaded
+        cn_calculated = app.calculate_batch(cn_batch["batch_id"], {"user": "smoke_test"})
+        assert cn_calculated["records"][0]["deductions"]["social_insurance_employee"] > 0, cn_calculated["records"][0]
+        assert cn_calculated["records"][0]["deductions"]["housing_fund_employee"] > 0, cn_calculated["records"][0]
+        assert cn_calculated["records"][0]["deductions"]["individual_income_tax"] > 0, cn_calculated["records"][0]
+        assert any("CN SHANGHAI" in message for message in cn_calculated["records"][0]["calculation_messages"]), cn_calculated["records"][0]
+
         app.update_payroll_record(record_id, {"deductions": {"income_tax": 100}, "jp_fields": {"late_night_hours": 1.5}, "user": "smoke_test"})
         app.adjust_record(record_id, {"amount": -25, "reason": "Smoke correction", "user": "smoke_test"})
         app.calculate_batch(jp_batch["batch_id"], {"user": "smoke_test"})

@@ -1,0 +1,15 @@
+{
+  "app.title": "TACAI Pay SG シンガポール給与",
+  "language": "日本語",
+  "nav.dashboard": "ダッシュボード",
+  "nav.master": "給与マスタ",
+  "nav.batches": "従業員給与支給",
+  "nav.monthly_sheets": "月次給与計算",
+  "nav.calendars": "給与カレンダー",
+  "nav.release": "給与支給",
+  "nav.actuarial": "給与精算",
+  "nav.reports": "レポート",
+  "nav.parameters": "パラメータ",
+  "nav.audit": "監査",
+  "note": "主要UI文言は現在 backend/app.py に内蔵されています。本ファイルは外部参照用です。"
+}

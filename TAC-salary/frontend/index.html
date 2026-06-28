@@ -143,6 +143,7 @@
       <form id="advanced-query-form" class="advanced-query-form">
         <label><span data-i18n="query.entity">Entity</span><select name="entity_id"><option value="" data-i18n="query.allEntities">All entities</option></select></label>
         <label><span data-i18n="query.department">Department</span><input name="department" placeholder="Department / ID"></label>
+        <label><span data-i18n="query.team">Team</span><input name="team" placeholder="Team / ID"></label>
         <label><span data-i18n="query.employee">Employee</span><input name="employee" placeholder="Employee ID / No / Name"></label>
         <label><span data-i18n="query.month">Payroll Month</span><input name="payroll_month" type="month"></label>
         <label><span data-i18n="query.status">Status</span><select name="status"><option value="" data-i18n="query.allStatuses">All statuses</option><option value="draft">draft</option><option value="active">active</option><option value="draft_created">draft_created</option><option value="data_loaded">data_loaded</option><option value="calculated">calculated</option><option value="hr_review">hr_review</option><option value="first_confirmed">first_confirmed</option><option value="final_review">final_review</option><option value="finalized">finalized</option><option value="payment_prepared">payment_prepared</option><option value="paid">paid</option><option value="submitted">submitted</option><option value="closed">closed</option></select></label>
@@ -184,12 +185,12 @@
         <label>Employee ID<input name="employee_id" required readonly placeholder="EMP-001"></label>
         <label>Employee Name<input name="employee_name" required placeholder="Employee name"></label>
         <label>Employment Type<select name="employment_type"><option value="regular">regular</option><option value="haken">haken/dispatched</option><option value="contract">contract</option><option value="part_time">part-time</option><option value="foreign_national">foreign national</option></select></label>
-        <label>Contract Type<input name="contract_type" placeholder="regular / fixed_term / haken"></label>
+        <label>Contract Type<select name="contract_type"><option value="regular">regular</option><option value="fixed_term">fixed_term</option><option value="haken">haken</option><option value="part_time">part_time</option><option value="contract">contract</option><option value="permanent">permanent</option><option value="foreign_national">foreign_national</option></select></label>
         <label>Contract Start<input name="contract_start_date" type="date"></label>
         <label>Contract End<input name="contract_end_date" type="date"></label>
         <label>Employment Start<input name="employment_start_date" type="date"></label>
         <label>Employment End<input name="employment_end_date" type="date"></label>
-        <label>Work City<input name="work_city" placeholder="Tokyo / Singapore / Shanghai"></label>
+        <label>Work City<input name="work_city" list="work-city-list" placeholder="Tokyo / Singapore / Shanghai"><datalist id="work-city-list"><option value="Tokyo"><option value="Osaka"><option value="Nagoya"><option value="Singapore"><option value="Shanghai"><option value="Nanjing"><option value="Xian"><option value="Wuhu"><option value="Beijing"><option value="Shenzhen"><option value="Guangzhou"></datalist></label>
         <label data-country-field="CN">CN City Code<select name="city_code"><option value="">N/A</option><option>SHANGHAI</option><option>NANJING</option><option>XIAN</option><option>WUHU</option></select></label>
         <label>Base Salary<input name="base_salary" required type="number" step="0.01" value="0"></label>
         <label>Position Allowance<input name="position_allowance" type="number" step="0.01" value="0"></label>
@@ -210,8 +211,8 @@
         <label data-country-field="SG">SG CPF Employee<input name="cpf_employee" type="number" step="0.01" value="0"></label>
         <label data-country-field="SG">SG CPF Employer<input name="cpf_employer" type="number" step="0.01" value="0"></label>
         <label data-country-field="SG">SG CPF Manual Reason<input name="cpf_manual_reason" placeholder="Reason for manual CPF"></label>
-        <label data-country-field="CN">CN Social Insurance City<input name="social_insurance_city" placeholder="SHANGHAI / NANJING / XIAN / WUHU"></label>
-        <label data-country-field="CN">CN Housing Fund City<input name="housing_fund_city" placeholder="SHANGHAI / NANJING / XIAN / WUHU"></label>
+        <label data-country-field="CN">CN Social Insurance City<select name="social_insurance_city"><option value="">N/A</option><option>SHANGHAI</option><option>NANJING</option><option>XIAN</option><option>WUHU</option></select></label>
+        <label data-country-field="CN">CN Housing Fund City<select name="housing_fund_city"><option value="">N/A</option><option>SHANGHAI</option><option>NANJING</option><option>XIAN</option><option>WUHU</option></select></label>
         <label data-country-field="CN">CN Social Insurance Emp.<input name="social_insurance_employee" type="number" step="0.01" value="0"></label>
         <label data-country-field="CN">CN Housing Fund Emp.<input name="housing_fund_employee" type="number" step="0.01" value="0"></label>
         <label data-country-field="CN">CN Social Insurance Employer<input name="social_insurance_employer" type="number" step="0.01" value="0"></label>
@@ -224,7 +225,7 @@
         <label>Hourly Rate<input name="hourly_rate" type="number" step="0.01" value="0"></label>
         <label>Daily Rate<input name="daily_rate" type="number" step="0.01" value="0"></label>
         <label>Std. Hours / Month<input name="standard_hours_per_month" type="number" step="0.01" value="160"></label>
-        <label>Std. Days / Month<input name="standard_days_per_month" type="number" step="0.01" value="20"></label>
+        <label>Std. Days / Month<input name="standard_days_per_month" type="number" step="0.01" value="20" onchange="autoStandardHours(this)"></label>
         <label>Actual Work Hours<input name="actual_work_hours" type="number" step="0.01" value="0"></label>
         <label>Actual Work Days<input name="actual_work_days" type="number" step="0.01" value="0"></label>
         <label>Proration<select name="proration_method"><option value="calendar_days">calendar_days</option><option value="working_days">working_days</option></select></label>
@@ -233,7 +234,7 @@
       </form>
       <p class="muted" data-i18n="salaryMaster.importHelp">Step 1 imports EmployeeAdmin records as draft salary profiles. Complete salary details and activate profiles before loading payroll.</p>
       <div class="toolbar" style="margin-top:24px;"><h2 style="margin:0;" data-i18n="salaryMaster.profiles">Salary Profiles</h2><button type="button" id="import-employeeadmin" class="secondary" data-i18n="salaryMaster.import">Import EmployeeAdmin Draft Profiles</button></div>
-      <div class="scroll"><table><thead><tr><th>Profile</th><th>Employee</th><th>Country</th><th>Entity</th><th>Type</th><th>Rule</th><th>Contract End</th><th>Base</th><th>Allowances</th><th>Status</th><th>Completeness</th><th>Actions</th></tr></thead><tbody id="salary-master-list"></tbody></table></div>
+      <div class="scroll"><table><thead><tr><th>Profile</th><th>Employee</th><th>Country</th><th>Entity</th><th>Dept/Team</th><th>Type</th><th>Rule</th><th>Contract End</th><th>Base</th><th>Allowances</th><th>Status</th><th>Completeness</th><th>Actions</th></tr></thead><tbody id="salary-master-list"></tbody></table></div>
     </section>
 
     <section id="view-records" class="hidden">
@@ -272,8 +273,18 @@
 
     <section id="view-reports" class="hidden">
       <h2>Reports</h2>
-      <div class="toolbar"><button id="load-net-report">Net Pay Report</button><button id="load-employer-report">Employer Cost Report</button></div>
-      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Batch</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Amount</th></tr></thead><tbody id="report-list"></tbody></table></div>
+      <div class="toolbar"><button id="load-net-report">Net Pay Report</button><button id="load-employer-report">Employer Cost Report</button><button id="load-payroll-records-report" class="secondary">Payroll Records</button></div>
+      <div id="report-search-section" class="hidden" style="margin-top:12px;">
+        <form id="report-search-form" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));">
+          <label>Entity<select name="entity_id"><option value="">All</option></select></label>
+          <label>Department<input name="department" placeholder="Department ID / Name"></label>
+          <label>Team<input name="team" placeholder="Team ID / Name"></label>
+          <label>Employee<input name="employee" placeholder="Name / ID / No"></label>
+          <div class="advanced-query-actions"><button type="submit">Search</button><button type="button" class="secondary" id="report-search-reset">Reset</button></div>
+        </form>
+      </div>
+      <div class="scroll" style="margin-top:16px;"><table><thead id="report-thead"><tr><th>Batch</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Amount</th></tr></thead><tbody id="report-list"></tbody></table></div>
+      <div id="report-count" class="helper-text" style="margin-top:8px;color:#65758b;font-size:13px"></div>
     </section>
 
     <section id="view-payslips" class="hidden">
@@ -287,7 +298,7 @@
       <h2>Notices</h2>
       <p class="muted">If SMTP is not configured, notices are recorded as manual_send_pending instead of fake sent.</p>
       <div class="toolbar"><button id="queue-first-notice" class="warning">Queue First Notice</button><button id="queue-final-notice" class="success">Queue Final Notice</button></div>
-      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Notice</th><th>Type</th><th>Employee</th><th>Email</th><th>Status</th><th>Queued</th><th>Failure/Note</th></tr></thead><tbody id="notice-list"></tbody></table></div>
+      <div class="scroll" style="margin-top:16px;"><table><thead><tr><th>Notice</th><th>Type</th><th>Employee</th><th>Channel</th><th>Email</th><th>Msg Center</th><th>Status</th><th>Queued</th><th>Note</th></tr></thead><tbody id="notice-list"></tbody></table></div>
     </section>
 
     <section id="view-feedback" class="hidden">
@@ -341,31 +352,31 @@
         'app.title': 'TAC 工资模块', 'app.subtitle': 'APAC 工资 v2 本地 MVP — 日本 / 新加坡 / 中国批次流程、员工主数据快照、付款、通知、工资单和审计。', 'app.language': '语言',
         'nav.portal': '返回 Portal', 'nav.platform': '薪资平台', 'nav.dashboard': '仪表盘', 'nav.batches': '工资批次', 'nav.salary-master': '薪资主记录', 'nav.records': '工资记录', 'nav.payment': '付款', 'nav.reports': '报表', 'nav.payslips': '工资单', 'nav.notices': '通知', 'nav.feedback': '反馈', 'nav.parameters': '参数', 'nav.audit': '审计', 'action.returnToPortal': '返回主门户',
         'platform.title': 'TAC 薪资平台', 'platform.subtitle': '选择国家薪资系统。大流程共用，国家字段、entity、规则和报表分别处理。', 'platform.jpTitle': '日本薪资计算', 'platform.sgTitle': '新加坡薪资计算', 'platform.cnTitle': '中国薪资计算', 'platform.jpDesc': '日本工资、派遣/加班/社保/住民税流程。', 'platform.sgDesc': '新加坡工资、CPF、准证和雇主成本流程。', 'platform.cnDesc': '中国 entity、城市参数、社保、公积金和个税流程。', 'context.banner': '当前国家薪资系统', 'country.jp': '日本薪资计算', 'country.sg': '新加坡薪资计算', 'country.cn': '中国薪资计算',
-        'query.title': '高级查询', 'query.subtitle': '按法人 entity、部门、员工、工资月份、状态和关键词过滤当前列表。', 'query.entity': '法人 Entity', 'query.allEntities': '全部 Entity', 'query.department': '部门', 'query.employee': '员工', 'query.month': '工资月份', 'query.status': '状态', 'query.allStatuses': '全部状态', 'query.keyword': '关键词', 'query.apply': '查询', 'query.reset': '重置',
+        'query.title': '高级查询', 'query.subtitle': '按法人 entity、部门、团队、员工、工资月份、状态和关键词过滤当前列表。', 'query.entity': '法人 Entity', 'query.allEntities': '全部 Entity', 'query.department': '部门', 'query.team': '团队', 'query.employee': '员工', 'query.month': '工资月份', 'query.status': '状态', 'query.allStatuses': '全部状态', 'query.keyword': '关键词', 'query.apply': '查询', 'query.reset': '重置',
         'field.country': '国家', 'field.entity': '法人 Entity', 'field.employeeNo': '员工号', 'field.employeeId': '员工 ID', 'field.employeeName': '员工姓名', 'field.employmentType': '雇佣类型', 'field.contractType': '合同类型', 'field.contractStart': '合同开始日', 'field.contractEnd': '合同结束日', 'field.employmentStart': '入职日', 'field.employmentEnd': '离职日', 'field.ruleType': '计算规则', 'field.baseRate': '基础费率', 'field.hourlyRate': '时薪', 'field.dailyRate': '日薪', 'field.standardHours': '月标准工时', 'field.standardDays': '月标准天数', 'field.actualHours': '实际工时', 'field.actualDays': '实际天数', 'field.proration': '折算方式', 'field.workCity': '工作城市', 'field.cityCode': '中国城市代码', 'field.baseSalary': '基本工资', 'field.positionAllowance': '岗位津贴', 'field.commuteAllowance': '通勤津贴', 'field.housingAllowance': '住房津贴', 'field.otherAllowance': '其他津贴', 'field.overtimePay': '日本加班费', 'field.effectiveFrom': '生效日', 'field.status': '状态',
         'dashboard.title': '工资仪表盘', 'dashboard.subtitle': '统一管理薪资主数据、月度工资批次、通知、付款和审计。', 'dashboard.openBatches': '开放批次', 'batches.create': '创建月度工资批次', 'batches.list': '工资批次', 'salaryMaster.title': '员工薪资主记录', 'salaryMaster.profiles': '薪资档案', 'salaryMaster.import': '导入员工基础资料为草稿', 'salaryMaster.importHelp': '第 1 步先把员工主数据导入为薪资草稿；完善工资金额和生效日后，再设为 active 才能进入工资批次。', 'records.title': '工资记录',
         'button.createBatch': '创建批次', 'button.createProfile': '保存薪资档案', 'button.loadEmployees': '导入 active 薪资档案', 'button.calculate': '运行工资计算', 'button.firstConfirm': '一级确认', 'button.secondConfirm': '二级确认', 'button.finalize': '最终锁定',
-        'msg.selectEmployee': '请先选择国家和法人 Entity', 'msg.noEmployees': '没有匹配的员工主记录', 'msg.profileCreated': '薪资档案已保存', 'msg.importDone': '员工基础资料导入完成', 'msg.employeesLoaded': '员工薪资档案已导入。'
+        'msg.selectEmployee': '请先选择国家和法人 Entity', 'msg.noEmployees': '没有匹配的员工主记录', 'msg.profileCreated': '薪资档案已保存', 'msg.importDone': '员工基础资料导入完成', 'msg.employeesLoaded': '员工薪资档案已导入。', 'msg.confirmCalculate': '确认对此批次执行薪资计算？所有记录将被重新计算。', 'msg.calcSuccess': '薪资计算完成'
       },
       ja: {
         'app.title': 'TAC 給与モジュール', 'app.subtitle': 'APAC 給与 v2 ローカル MVP — JP / SG / CN のバッチ、EmployeeAdmin スナップショット、支払、通知、給与明細、監査。', 'app.language': '言語',
         'nav.portal': 'ポータルへ戻る', 'nav.platform': '給与プラットフォーム', 'nav.dashboard': 'ダッシュボード', 'nav.batches': '給与バッチ', 'nav.salary-master': '給与マスター', 'nav.records': '給与レコード', 'nav.payment': '支払', 'nav.reports': 'レポート', 'nav.payslips': '給与明細', 'nav.notices': '通知', 'nav.feedback': 'フィードバック', 'nav.parameters': 'パラメータ', 'nav.audit': '監査', 'action.returnToPortal': 'メインポータルへ戻る',
         'platform.title': 'TAC 給与プラットフォーム', 'platform.subtitle': '国別給与システムを選択します。共通ワークフローを維持し、国別フィールド・法人・ルール・レポートを分離します。', 'platform.jpTitle': '日本給与計算', 'platform.sgTitle': 'シンガポール給与計算', 'platform.cnTitle': '中国給与計算', 'platform.jpDesc': '日本給与、派遣、残業、社会保険、住民税ワークフロー。', 'platform.sgDesc': 'シンガポール給与、CPF、就労許可、雇用主コスト。', 'platform.cnDesc': '中国法人、都市パラメータ、社会保険、住宅積立金、個人所得税。', 'context.banner': '現在の国別給与システム', 'country.jp': '日本給与計算', 'country.sg': 'シンガポール給与計算', 'country.cn': '中国給与計算',
-        'query.title': '詳細検索', 'query.subtitle': '法人 entity、部門、社員、給与月、ステータス、キーワードで現在の一覧を絞り込みます。', 'query.entity': '法人 Entity', 'query.allEntities': 'すべての Entity', 'query.department': '部門', 'query.employee': '社員', 'query.month': '給与月', 'query.status': 'ステータス', 'query.allStatuses': 'すべてのステータス', 'query.keyword': 'キーワード', 'query.apply': '検索', 'query.reset': 'リセット',
+        'query.title': '詳細検索', 'query.subtitle': '法人 entity、部門、チーム、社員、給与月、ステータス、キーワードで現在の一覧を絞り込みます。', 'query.entity': '法人 Entity', 'query.allEntities': 'すべての Entity', 'query.department': '部門', 'query.team': 'チーム', 'query.employee': '社員', 'query.month': '給与月', 'query.status': 'ステータス', 'query.allStatuses': 'すべてのステータス', 'query.keyword': 'キーワード', 'query.apply': '検索', 'query.reset': 'リセット',
         'field.country': '国', 'field.entity': '法人 Entity', 'field.employeeNo': '社員番号', 'field.employeeId': '社員 ID', 'field.employeeName': '社員名', 'field.employmentType': '雇用区分', 'field.contractType': '契約区分', 'field.contractStart': '契約開始日', 'field.contractEnd': '契約終了日', 'field.employmentStart': '入社日', 'field.employmentEnd': '退職日', 'field.ruleType': '計算ルール', 'field.baseRate': '基準単価', 'field.hourlyRate': '時給', 'field.dailyRate': '日給', 'field.standardHours': '月標準時間', 'field.standardDays': '月標準日数', 'field.actualHours': '実働時間', 'field.actualDays': '実働日数', 'field.proration': '按分方法', 'field.workCity': '勤務地', 'field.cityCode': '中国都市コード', 'field.baseSalary': '基本給', 'field.positionAllowance': '役職手当', 'field.commuteAllowance': '通勤手当', 'field.housingAllowance': '住宅手当', 'field.otherAllowance': 'その他手当', 'field.overtimePay': '日本 残業代', 'field.effectiveFrom': '適用開始日', 'field.status': 'ステータス',
         'dashboard.title': '給与ダッシュボード', 'dashboard.subtitle': '給与マスター、月次給与バッチ、通知、支払、監査を一元管理します。', 'dashboard.openBatches': '未完了バッチ', 'batches.create': '月次給与バッチ作成', 'batches.list': '給与バッチ', 'salaryMaster.title': '社員給与マスター', 'salaryMaster.profiles': '給与プロファイル', 'salaryMaster.import': '社員基本情報を下書き取込', 'salaryMaster.importHelp': 'ステップ 1 は EmployeeAdmin の基本情報を給与マスター下書きとして取込ます。給与金額と適用日を完成して active にしてから給与バッチへ取込ます。', 'records.title': '給与レコード',
         'button.createBatch': 'バッチ作成', 'button.createProfile': '給与プロファイル保存', 'button.loadEmployees': 'active 給与プロファイル取込', 'button.calculate': '給与計算実行', 'button.firstConfirm': '一次確認', 'button.secondConfirm': '二次確認', 'button.finalize': '確定・ロック',
-        'msg.selectEmployee': '国と法人 Entity を選択してください', 'msg.noEmployees': '該当する社員マスターがありません', 'msg.profileCreated': '給与プロファイルを保存しました', 'msg.importDone': '社員基本情報取込が完了しました', 'msg.employeesLoaded': '給与プロファイルを取込ました。'
+        'msg.selectEmployee': '国と法人 Entity を選択してください', 'msg.noEmployees': '該当する社員マスターがありません', 'msg.profileCreated': '給与プロファイルを保存しました', 'msg.importDone': '社員基本情報取込が完了しました', 'msg.employeesLoaded': '給与プロファイルを取込ました。', 'msg.confirmCalculate': 'このバッチの給与計算を実行しますか？全レコードが再計算されます。', 'msg.calcSuccess': '給与計算が完了しました'
       },
       en: {
         'app.title': 'TAC Salary', 'app.subtitle': 'APAC payroll v2 local MVP — JP / SG / CN batch workflow, EmployeeAdmin snapshots, payment, notices, payslips and audit.', 'app.language': 'Language',
         'nav.portal': 'Back to Portal', 'nav.platform': 'Payroll Platform', 'nav.dashboard': 'Dashboard', 'nav.batches': 'Payroll Batches', 'nav.salary-master': 'Salary Master', 'nav.records': 'Payroll Records', 'nav.payment': 'Payment', 'nav.reports': 'Reports', 'nav.payslips': 'Payslips', 'nav.notices': 'Notices', 'nav.feedback': 'Feedback', 'nav.parameters': 'Parameters', 'nav.audit': 'Audit', 'action.returnToPortal': 'Return to Main Portal',
         'platform.title': 'TAC Salary Platform', 'platform.subtitle': 'Choose a country payroll system. Shared workflow stays consistent; country fields, entities, rules and reports are scoped separately.', 'platform.jpTitle': 'Japan Salary Calculation', 'platform.sgTitle': 'Singapore Salary Calculation', 'platform.cnTitle': 'China Salary Calculation', 'platform.jpDesc': 'Japan salary, haken/dispatch, overtime, social insurance and resident tax workflow.', 'platform.sgDesc': 'Singapore payroll, CPF, work pass and employer cost workflow.', 'platform.cnDesc': 'China entities, city parameters, social insurance, housing fund and IIT workflow.', 'context.banner': 'Current country payroll system', 'country.jp': 'Japan Salary Calculation', 'country.sg': 'Singapore Salary Calculation', 'country.cn': 'China Salary Calculation',
-        'query.title': 'Advanced Search', 'query.subtitle': 'Filter current lists by entity, department, employee, payroll month, status and keyword.', 'query.entity': 'Entity', 'query.allEntities': 'All entities', 'query.department': 'Department', 'query.employee': 'Employee', 'query.month': 'Payroll Month', 'query.status': 'Status', 'query.allStatuses': 'All statuses', 'query.keyword': 'Keyword', 'query.apply': 'Apply Search', 'query.reset': 'Reset',
+        'query.title': 'Advanced Search', 'query.subtitle': 'Filter current lists by entity, department, team, employee, payroll month, status and keyword.', 'query.entity': 'Entity', 'query.allEntities': 'All entities', 'query.department': 'Department', 'query.team': 'Team', 'query.employee': 'Employee', 'query.month': 'Payroll Month', 'query.status': 'Status', 'query.allStatuses': 'All statuses', 'query.keyword': 'Keyword', 'query.apply': 'Apply Search', 'query.reset': 'Reset',
         'field.country': 'Country', 'field.entity': 'Legal Entity', 'field.employeeNo': 'Employee No', 'field.employeeId': 'Employee ID', 'field.employeeName': 'Employee Name', 'field.employmentType': 'Employment Type', 'field.contractType': 'Contract Type', 'field.contractStart': 'Contract Start', 'field.contractEnd': 'Contract End', 'field.employmentStart': 'Employment Start', 'field.employmentEnd': 'Employment End', 'field.ruleType': 'Rule Type', 'field.baseRate': 'Base Rate', 'field.hourlyRate': 'Hourly Rate', 'field.dailyRate': 'Daily Rate', 'field.standardHours': 'Std. Hours / Month', 'field.standardDays': 'Std. Days / Month', 'field.actualHours': 'Actual Work Hours', 'field.actualDays': 'Actual Work Days', 'field.proration': 'Proration', 'field.workCity': 'Work City', 'field.cityCode': 'CN City Code', 'field.baseSalary': 'Base Salary', 'field.positionAllowance': 'Position Allowance', 'field.commuteAllowance': 'Commute Allowance', 'field.housingAllowance': 'Housing Allowance', 'field.otherAllowance': 'Other Allowance', 'field.overtimePay': 'JP Overtime Pay', 'field.effectiveFrom': 'Effective From', 'field.status': 'Status',
         'dashboard.title': 'Payroll Dashboard', 'dashboard.subtitle': 'Manage salary master readiness, monthly payroll batches, notices, payments and audit in one payroll cockpit.', 'dashboard.openBatches': 'Open Batches', 'batches.create': 'Create Monthly Payroll Batch', 'batches.list': 'Payroll Batches', 'salaryMaster.title': 'Employee Salary Master', 'salaryMaster.profiles': 'Salary Profiles', 'salaryMaster.import': 'Import EmployeeAdmin Draft Profiles', 'salaryMaster.importHelp': 'Step 1 imports EmployeeAdmin records as draft salary profiles. Complete pay details and activate profiles before loading payroll.', 'records.title': 'Payroll Records',
         'button.createBatch': 'Create Batch', 'button.createProfile': 'Save Salary Profile', 'button.loadEmployees': 'Load Active Salary Profiles', 'button.calculate': 'Run Payroll Calculation', 'button.firstConfirm': 'First Confirmation', 'button.secondConfirm': 'Second Confirmation', 'button.finalize': 'Finalize Payroll',
-        'msg.selectEmployee': 'Select country/entity first', 'msg.noEmployees': 'No matching employee records', 'msg.profileCreated': 'Salary profile saved', 'msg.importDone': 'Employee base import completed', 'msg.employeesLoaded': 'Salary profiles loaded.'
+        'msg.selectEmployee': 'Select country/entity first', 'msg.noEmployees': 'No matching employee records', 'msg.profileCreated': 'Salary profile saved', 'msg.importDone': 'Employee base import completed', 'msg.employeesLoaded': 'Salary profiles loaded.', 'msg.confirmCalculate': 'Confirm to run payroll calculation for this batch? This will recalculate all records.', 'msg.calcSuccess': 'Payroll calculation complete'
       }
     };
 
@@ -765,8 +776,9 @@
         const completeText = completeness.pay_complete ? 'pay complete' : `missing: ${(completeness.missing_fields || []).join(', ')}`;
         const rule = profile.salary_calculation_rule || {};
         const contract = profile.contract_snapshot || {};
-        return `<tr><td>${profile.profile_id}</td><td>${profile.employee_name}<br><span class="muted">${profile.employee_id}</span></td><td>${profile.country_code}</td><td>${entityName(profile.entity_id)}</td><td>${profile.employment_type}</td><td>${rule.rule_type || 'monthly_fixed'}</td><td>${contract.contract_end_date || contract.employment_end_date || '<span class="muted">open</span>'}</td><td>${money(profile.base_salary, profile.currency)}</td><td>${money(allowances, profile.currency)}</td><td><span class="pill ${profile.status}">${profile.status}</span></td><td>${completeText}</td><td><button type="button" onclick="editSalaryProfile('${profile.profile_id}')">Complete / Edit</button></td></tr>`;
-      }).join('') : '<tr><td colspan="12" class="muted">No salary profiles yet.</td></tr>';
+        const deptTeam = [profile.department_id, profile.team_id].filter(Boolean).join('/') || '<span class="muted">—</span>';
+        return `<tr><td>${profile.profile_id}</td><td>${profile.employee_name}<br><span class="muted">${profile.employee_id}</span></td><td>${profile.country_code}</td><td>${entityName(profile.entity_id)}</td><td>${deptTeam}</td><td>${profile.employment_type}</td><td>${rule.rule_type || 'monthly_fixed'}</td><td>${contract.contract_end_date || contract.employment_end_date || '<span class="muted">open</span>'}</td><td>${money(profile.base_salary, profile.currency)}</td><td>${money(allowances, profile.currency)}</td><td><span class="pill ${profile.status}">${profile.status}</span></td><td>${completeText}</td><td><button type="button" onclick="editSalaryProfile('${profile.profile_id}')">Complete / Edit</button></td></tr>`;
+      }).join('') : '<tr><td colspan="13" class="muted">No salary profiles yet.</td></tr>';
     }
 
     async function loadRecordsList() {
@@ -911,6 +923,14 @@
     }
     window.editRecord = editRecord;
 
+    function autoStandardHours(daysInput) {
+      const days = parseFloat(daysInput.value) || 0;
+      const form = daysInput.closest('form');
+      const hoursInput = form.querySelector('[name="standard_hours_per_month"]');
+      if (hoursInput) { hoursInput.value = Math.round(days * 8 * 100) / 100; }
+    }
+    window.autoStandardHours = autoStandardHours;
+
     document.querySelector('#batch-form').addEventListener('submit', async event => {
       event.preventDefault();
       try {
@@ -958,7 +978,28 @@
       } catch (error) { showMessage(error.message, true); }
     }
     document.querySelector('#load-employees').addEventListener('click', () => runBatchAction('/load-employees', t('msg.employeesLoaded')));
-    document.querySelector('#calculate-batch').addEventListener('click', () => runBatchAction('/calculate', 'Payroll calculated.'));
+    document.querySelector('#calculate-batch').addEventListener('click', async () => {
+      if (!state.selectedBatchId) return showMessage('Select a batch first.', true);
+      if (!confirm(t('msg.confirmCalculate') || 'Confirm to run payroll calculation for this batch? This will recalculate all records.')) return;
+      try {
+        const result = await api(`/api/v2/batches/${encodeURIComponent(state.selectedBatchId)}/calculate`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user: 'local_admin', allow_salary_master_fallback: true })
+        });
+        const calcCount = result.calculated_count || 0;
+        const errorCount = result.error_count || 0;
+        let message = `${t('msg.calcSuccess') || 'Payroll calculated'}: ${calcCount} record(s) processed.`;
+        if (errorCount > 0) {
+          message += ` ${errorCount} record(s) with issues: `;
+          message += (result.error_records || []).slice(0, 5).map(r =>
+            `${r.employee_id}: ${(r.calculation_messages || []).join('; ') || 'validation error'}`
+          ).join(' | ');
+          if (errorCount > 5) message += ` ...and ${errorCount - 5} more.`;
+        }
+        showMessage(message);
+        await loadSelectedBatch(); await loadAudit();
+      } catch (error) { showMessage(error.message, true); }
+    });
     document.querySelector('#confirm-first').addEventListener('click', () => runBatchAction('/confirm/first', 'First confirmation completed.'));
     document.querySelector('#confirm-second').addEventListener('click', () => runBatchAction('/confirm/second', 'Second confirmation completed.'));
     document.querySelector('#finalize-batch').addEventListener('click', () => runBatchAction('/finalize', 'Payroll finalized and locked.'));
@@ -995,17 +1036,64 @@
       try {
         state.activeReportType = type;
         const report = await api(scopedPath(`/api/v2/reports/${type}`, state.query));
+        document.querySelector('#report-thead').innerHTML = `<tr><th>Batch</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Employees</th><th>Amount</th></tr>`;
         document.querySelector('#report-list').innerHTML = report.rows.length ? report.rows.map(row => `
           <tr><td>${row.batch_id}</td><td>${row.country_code}</td><td>${entityName(row.entity_id)}</td><td>${row.payroll_month}</td><td><span class="pill ${row.status}">${row.status}</span></td><td>${row.employee_count}</td><td>${money(row.amount, row.currency)}</td></tr>
         `).join('') + `<tr><td colspan="6"><strong>Total</strong></td><td><strong>${money(report.total_amount, scopedCurrency())}</strong></td></tr>` : '<tr><td colspan="7" class="muted">No report rows.</td></tr>';
+        document.querySelector('#report-count').textContent = `${report.rows.length} record(s) total`;
       } catch (error) { showMessage(error.message, true); }
     }
-    document.querySelector('#load-net-report').addEventListener('click', () => loadReport('net-pay'));
-    document.querySelector('#load-employer-report').addEventListener('click', () => loadReport('employer-cost'));
+    document.querySelector('#load-net-report').addEventListener('click', () => { document.querySelector('#report-search-section').classList.add('hidden'); loadReport('net-pay'); });
+    document.querySelector('#load-employer-report').addEventListener('click', () => { document.querySelector('#report-search-section').classList.add('hidden'); loadReport('employer-cost'); });
+
+    async function loadPayrollRecordsReport(query = {}) {
+      try {
+        state.activeReportType = 'payroll-records';
+        const mergedQuery = { ...state.query, ...query };
+        const report = await api(scopedPath('/api/v2/reports/payroll-records', mergedQuery));
+        const currency = scopedCurrency();
+        const thead = document.querySelector('#report-thead');
+        thead.innerHTML = `<tr><th>Record</th><th>Employee</th><th>Dept/Team</th><th>Country</th><th>Entity</th><th>Month</th><th>Status</th><th>Gross</th><th>Deductions</th><th>Net</th><th>Actions</th></tr>`;
+        document.querySelector('#report-list').innerHTML = report.rows && report.rows.length ? report.rows.map(row => {
+          const employee = row.employee_snapshot || {};
+          const deptId = employee.department_id || '';
+          const teamId = employee.team_id || '';
+          const deptTeam = [deptId, teamId].filter(Boolean).join('/') || '—';
+          return `<tr>
+            <td>${row.payroll_record_id}</td>
+            <td>${employee.employee_name || row.employee_id}<br><span class="muted">${row.employee_id}</span></td>
+            <td>${deptTeam}</td>
+            <td>${row.country_code}</td>
+            <td>${entityName(row.entity_id)}</td>
+            <td>${row.payroll_month}</td>
+            <td><span class="pill ${row.status}">${row.status}</span></td>
+            <td>${money(row.gross_pay, row.currency || currency)}</td>
+            <td>${money(row.deduction_total, row.currency || currency)}</td>
+            <td><strong>${money(row.net_pay, row.currency || currency)}</strong></td>
+            <td><button type="button" onclick="window.open('/api/v2/records/${encodeURIComponent(row.payroll_record_id)}/payslip-html','_blank')">HTML</button></td>
+          </tr>`;
+        }).join('') : '<tr><td colspan="11" class="muted">No payroll records found.</td></tr>';
+        document.querySelector('#report-count').textContent = `${report.total_count || 0} record(s) total`;
+      } catch (error) { showMessage(error.message, true); }
+    }
+    document.querySelector('#load-payroll-records-report').addEventListener('click', () => {
+      document.querySelector('#report-search-section').classList.remove('hidden');
+      fillAdvancedEntitySelect();
+      loadPayrollRecordsReport();
+    });
+    document.querySelector('#report-search-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const query = Object.fromEntries([...new FormData(event.target).entries()].filter(([, v]) => String(v || '').trim()));
+      await loadPayrollRecordsReport(query);
+    });
+    document.querySelector('#report-search-reset').addEventListener('click', () => {
+      document.querySelector('#report-search-form').reset();
+      loadPayrollRecordsReport();
+    });
 
     function renderPayslips(payslips = []) {
       document.querySelector('#payslip-list').innerHTML = payslips.length ? payslips.map(doc => `
-        <tr><td>${doc.payslip_id}</td><td>${doc.employee_id}</td><td>${doc.document_type}</td><td><span class="pill">${doc.status}</span></td><td>${doc.generated_at || ''}</td><td><a href="${doc.download_url}" target="_blank">Download</a></td></tr>
+        <tr><td>${doc.payslip_id}</td><td>${doc.employee_id}</td><td>${doc.document_type}</td><td><span class="pill">${doc.status}</span></td><td>${doc.generated_at || ''}</td><td><a href="${doc.download_url}" target="_blank">Download</a> | <a href="/api/v2/payslips/${encodeURIComponent(doc.payslip_id)}/html" target="_blank">HTML</a></td></tr>
       `).join('') : '<tr><td colspan="6" class="muted">No payslips generated.</td></tr>';
     }
 
@@ -1015,9 +1103,25 @@
     document.querySelector('#generate-payslips').addEventListener('click', () => runBatchAction('/payslips/generate', 'Payslips generated.', { document_type: 'draft_text_payslip' }));
 
     function renderNotices(notices = []) {
-      document.querySelector('#notice-list').innerHTML = notices.length ? notices.map(notice => `
-        <tr><td>${notice.notice_id}</td><td>${notice.notice_type}</td><td>${notice.recipient_employee_id}</td><td>${notice.recipient_email_snapshot || ''}</td><td><span class="pill">${notice.status}</span></td><td>${notice.queued_at || ''}</td><td>${notice.failure_reason || notice.notes || ''}</td></tr>
-      `).join('') : '<tr><td colspan="7" class="muted">No notices queued.</td></tr>';
+      document.querySelector('#notice-list').innerHTML = notices.length ? notices.map(notice => {
+        const channel = notice.channel || '';
+        const channelBadge = channel.includes('message_center') && channel.includes('email')
+          ? '<span class="pill" style="background:#059669;color:#fff">📬+📧 Dual</span>'
+          : channel.includes('message_center')
+            ? '<span class="pill" style="background:#1a56db;color:#fff">📬 Msg Center</span>'
+            : channel.includes('email')
+              ? '<span class="pill" style="background:#d97706;color:#fff">📧 Email</span>'
+              : '<span class="pill muted">' + (channel || 'none') + '</span>';
+        const msgStatus = notice.message_center_status || '';
+        const msgBadge = msgStatus === 'sent'
+          ? '<span class="pill" style="background:#059669;color:#fff">✓ Sent</span>'
+          : msgStatus === 'no_account'
+            ? '<span class="pill muted">— No Account</span>'
+            : msgStatus === 'failed'
+              ? '<span class="pill" style="background:#dc2626;color:#fff">✗ Failed</span>'
+              : '<span class="pill muted">—</span>';
+        return `<tr><td>${notice.notice_id}</td><td>${notice.notice_type}</td><td>${notice.recipient_employee_id}</td><td>${channelBadge}</td><td>${notice.recipient_email_snapshot || ''}</td><td>${msgBadge}</td><td><span class="pill">${notice.status}</span></td><td>${notice.queued_at || ''}</td><td>${notice.failure_reason || notice.notes || ''}</td></tr>`;
+      }).join('') : '<tr><td colspan="9" class="muted">No notices queued.</td></tr>';
     }
 
     async function loadNoticeList() {

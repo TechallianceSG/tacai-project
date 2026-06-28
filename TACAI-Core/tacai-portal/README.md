@@ -56,6 +56,7 @@ curl -s http://127.0.0.1:8005/health
 | InterviewReady | 8000 | `http://127.0.0.1:8000/` | `interview_ready.access` |
 | Payroll (legacy comparison) | 8001 | `http://127.0.0.1:8001/` | `payroll.access` |
 | TAC Payroll | 8015 | `http://127.0.0.1:8015/` | `payroll.access` |
+| China Salary Calculation | 8015 | `http://127.0.0.1:8015/payroll/cn` | `payroll.access` |
 | Timesheet | 8002 | `http://127.0.0.1:8002/` | `timesheet.access` |
 | Expense | 8003 | `http://127.0.0.1:8003/` | `reimbursement.access` |
 | Employee Mgmt | 8004 | `http://127.0.0.1:8004/dashboard` | `employee_management.access` |

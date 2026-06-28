@@ -12,6 +12,74 @@ Before any task:
 3. Do not access sibling projects unless explicitly requested.
 4. Do not load memory from other projects.
 
+---
+
+# EXECUTION PRINCIPLE — 最高権限・自動実行ルール
+
+**核心原则：计划一旦确认，所有后续执行步骤直接进行，无需逐次确认。**
+
+## 1. Plan Mode as the Single Gate（计划模式是唯一关卡）
+
+- 对于任何非平凡任务（涉及多文件、新功能、架构变更），Claude **必须**使用 EnterPlanMode 先制定计划并获取用户批准。
+- 一旦用户通过 ExitPlanMode 批准计划，**计划中的所有后续步骤自动获得授权**，Claude 必须直接执行，不再逐个询问 Yes/No。
+- 如果临时发现计划需要调整（小范围），直接调整并继续执行，事后说明即可。如果调整范围大，简要说明变更并继续 — 不需要重新走计划审批。
+
+## 2. Auto-Approved Operations（自動授権操作）
+
+TACAI-Project 範囲内で以下の操作は**無条件で直接実行**、確認不要：
+
+| 类别 | 范围 |
+|------|------|
+| 文件读写 | プロジェクトディレクトリ以下の全ファイル Read / Write / Edit |
+| 代码检查 | grep, find, ls, git status/log/diff, python3 -m py_compile |
+| 本地运行 | 全TAC-*サブプロジェクトの python3 backend/app.py 起動 |
+| 本地测试 | curl health check, python3 -m pytest, python3 -c 構文検証 |
+| 进程管理 | lsof ポート確認, kill ローカル開発プロセス |
+| 包管理 | pip install（プロジェクト関連依存） |
+| JSON処理 | python3 -m json.tool によるプロジェクト内JSON検証 |
+| 网络查询 | ローカルIP取得、ローカルサービス状態確認 |
+| 记忆管理 | memory/ ディレクトリ以下のファイル作成・更新 |
+
+## 3. Operations Requiring Brief Check（簡易確認で十分な操作）
+
+以下の操作は「何をするか」を一言伝えるだけで、**返事を待たずに続行**：
+
+- Git 操作（git add, git commit, git branch, git checkout — ただし git push は除く）
+- プロジェクト内生成ファイルの削除（一時ファイル、キャッシュ等）
+- ポート番号や設定パラメータの変更
+- 新しいシステムレベル依存のインストール
+
+## 4. Operations Still Requiring Explicit Confirmation（明示確認が必要な操作）
+
+以下の操作は**事前にユーザー確認が必須**：
+
+- `git push` またはリモートリポジトリへのプッシュ操作
+- 外部サービスへのデータ送信（APIコール、アップロード等）
+- git 履歴の削除や force push
+- `~/.claude/` グローバル設定やプロジェクト外システムファイルの変更
+- 本番環境や本番データベースへの操作
+- sudo が必要なシステムレベルパッケージのインストール
+
+## 5. Communication Style（コミュニケーションスタイル）
+
+- **実行前**：一言「何をするか」を伝えて（質問ではなく告知）、すぐ実行。
+  - ✅ `"正在将 salary_calc 函数提取到独立模块..."`
+  - ❌ `"Shall I extract the salary_calc function to a separate module?"`
+- **実行中**：複数の独立したステップは可能な限り並列実行し、逐次待機しない。
+- **実行後**：簡潔に結果報告。成功 → 一言確認。失敗 → 原因説明＋自動修正。
+
+## 6. Error Handling（エラー処理）
+
+- 予見可能なエラー（ポート使用中、ファイル不在等）は**直接修正**、質問しない。
+- 予期せぬエラーは、まず1つの修正案を試し、失敗したら状況をユーザーに説明。
+- 同じ操作に複数回失敗したら停止して報告、無限リトライループに入らない。
+
+## 7. Summary（一括要約）
+
+**デフォルトモード：タスク受信 → 計画（必要時）→ 計画承認 → 最後まで全速実行。ユーザーは承認ボトルネックになりたくない。欲しいのは結果だけ。**
+
+---
+
 ## Current workspace state
 
 This workspace contains multiple independent local projects rather than one root application:
@@ -277,6 +345,79 @@ When memory exceeds 100KB:
    - preserve history
 
 Prefer modular architecture.
+
+
+# UI / Report Standards
+
+## Row Count Requirement (ALL pages)
+
+Every report page, list page, and data table MUST show a total record count at the bottom of the results. This applies to:
+- Browse/list pages (salary master, batches, monthly sheets, etc.)
+- Report pages (payroll reports, cost reports, etc.)
+- Audit log pages (show "Showing latest X of Y total entries")
+- Parameter/config pages
+- Any page that displays a list of records
+
+Implementation pattern:
+```html
+<div class='helper-text' style='margin-top:8px'>{count} record(s) total</div>
+```
+
+Place immediately after the `</table></div>` closing tags, inside the card div for tables, or after the data content for non-table lists.
+
+For filtered views, show: "Showing X of Y records (filtered)"
+
+## Entity Display Convention (法人实体代码表示规范)
+
+All modules MUST display legal entity as human-readable labels, never as raw entity_id codes (e.g., "ENT-0002").
+
+### Label standard
+
+| Lang | Label |
+|------|-------|
+| zh | 法人实体代码 |
+| ja | 法人实体コード |
+| en | Legal Entity Code |
+
+Do NOT use abbreviated or abstract labels like "法人/公司", "Entity", or "法人/会社" for the entity field.
+
+### Display format
+
+Entity values in tables, dropdowns, and headers must be shown as:
+
+```
+{entity_code} - {entity_name} ({country})
+```
+
+Example:
+- `TASG - Tech Alliance Consultancy Service Pte. Ltd (Singapore)`
+- `TANJ - 南京特谙斯企业咨询有限公司 (中国)`
+- `TAKK - Tech Alliance株式会社 (Japan)`
+
+### Dropdown requirement
+
+Entity filter/selection MUST use a `<select>` dropdown with human-readable labels, NOT a free-text `<input>`. The dropdown options must be derived from the salary master's distinct entity_id values, resolved against masterdata entities.json for labels.
+
+### Source of truth
+
+`TACAI-Core/masterdata/database/entities.json` is the authoritative entity master. All modules should resolve entity_id → display label from this source.
+
+### Implementation pattern
+
+```python
+def entity_label(entity_id: str, lang: str = "zh") -> str:
+    """Return human-readable entity label: code - name (country)."""
+    # Load from masterdata entities.json, fallback to raw entity_id
+    # Format: {entity_code} - {entity_name} ({country})
+```
+
+Filter dropdowns should use exact matching (`==`), not substring matching (`.lower() in`), since the dropdown provides exact entity_id values.
+
+### Affected modules
+
+- `TACAIPAY/tacaipaysg/` — implemented (2026-06-25)
+- All future payroll modules (tacaipayjp, tacaipaycn, etc.)
+- Any module displaying entity data in tables or filters
 
 
 # business thinking

@@ -102,6 +102,8 @@ APP_BASE_URL = public_base_url("FILEADMIN_PUBLIC_BASE_URL", DEFAULT_PORT)
 PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
+MASTERDATA_PUBLIC_BASE_URL = public_base_url("MASTERDATA_PUBLIC_BASE_URL", 8007)
+MASTERDATA_INTERNAL_BASE_URL = os.environ.get("MASTERDATA_INTERNAL_BASE_URL", internal_base_url(8007)).strip().rstrip("/")
 EMAIL_SEND_MODE = os.environ.get("FILEADMIN_EMAIL_SEND_MODE", "dry_run").strip().lower() or "dry_run"
 SMTP_HOST = os.environ.get("FILEADMIN_SMTP_HOST", "").strip()
 SMTP_PORT = int(os.environ.get("FILEADMIN_SMTP_PORT", "587") or 587)
@@ -637,13 +639,17 @@ def entity_label(entity: dict[str, Any]) -> str:
 
 def entity_select_options_for_user(user: dict[str, Any], selected_entity_id: str = "", include_blank: bool = False) -> str:
     selected_entity_id = str(selected_entity_id or "").strip()
+    entities = fetch_masterdata_collection(user, "/api/entities", ("entities",))
+    if entities:
+        return masterdata_select_options(entities, selected_entity_id, "entity_id", "entity_code", "entity_name", "All" if include_blank else "")
+
     choices: dict[str, str] = {}
     current = user_entity(user)
     current_key = str(current.get("entity_id") or current.get("entity_code") or "").strip()
     if current_key:
         choices[current_key] = entity_label(current) or current_key
     if is_system_admin(user):
-        for doc in documents(include_archived=True):
+        for doc in documents():
             key = str(doc.get("entity_id", "")).strip()
             if key:
                 choices.setdefault(key, " - ".join(bit for bit in [key, str(doc.get("entity_name_snapshot", "")).strip()] if bit))
@@ -716,6 +722,15 @@ def can_download_attachment(user: dict[str, Any] | None, doc: dict[str, Any] | N
     return confidentiality_allows(user, str(attachment.get("confidentiality_level", "")))
 
 
+def can_download_version(user: dict[str, Any] | None, doc: dict[str, Any] | None, version: dict[str, Any] | None) -> bool:
+    if not version or not has_permission(user, "fileadmin.download") or not can_view_document(user, doc):
+        return False
+    attachment = find_file_attachment(str(version.get("file_id", ""))) if version.get("file_id") else None
+    if attachment:
+        return can_download_attachment(user, doc, attachment)
+    return confidentiality_allows(user, str((doc or {}).get("confidentiality_level", "")))
+
+
 def can_archive_document(user: dict[str, Any] | None, doc: dict[str, Any] | None) -> bool:
     return bool(doc and doc.get("status") != "archived" and has_permission(user, "fileadmin.archive") and can_view_document(user, doc))
 
@@ -764,14 +779,132 @@ def validate_user_admin_session(session_id: str) -> dict[str, Any] | None:
         return None
     if data.get("valid") and isinstance(data.get("user"), dict):
         user = data["user"]
+        user["_session_id"] = session_id
         if isinstance(data.get("session"), dict):
             user["_session"] = data["session"]
         return user
     return None
 
 
-def documents() -> list[dict[str, Any]]:
-    return load_json_array(DOCUMENTS_PATH)
+def masterdata_api_get(session_id: str, path: str, query: dict[str, str] | None = None) -> tuple[Any, str | None]:
+    if not session_id:
+        return None, "masterdata_unavailable"
+    url = f"{MASTERDATA_INTERNAL_BASE_URL}{path}"
+    if query:
+        clean_query = {key: value for key, value in query.items() if value}
+        if clean_query:
+            url = f"{url}?{urlencode(clean_query)}"
+    request = Request(url, headers={"Cookie": f"{USER_ADMIN_SESSION_COOKIE}={session_id}"}, method="GET")
+    try:
+        with urlopen(request, timeout=3) as response:
+            return json.loads(response.read().decode("utf-8")), None
+    except (OSError, URLError, json.JSONDecodeError):
+        return None, "masterdata_unavailable"
+
+
+def masterdata_items_from_payload(data: Any, collection_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if not isinstance(data, dict):
+        return []
+    for key in (*collection_keys, "items", "results"):
+        value = data.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    nested = data.get("data")
+    if isinstance(nested, (list, dict)):
+        return masterdata_items_from_payload(nested, collection_keys)
+    return []
+
+
+def fetch_masterdata_collection(user: dict[str, Any], path: str, collection_keys: tuple[str, ...], query: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    data, error = masterdata_api_get(str(user.get("_session_id", "")), path, query)
+    if error:
+        return []
+    return masterdata_items_from_payload(data, collection_keys)
+
+
+def active_masterdata_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [item for item in items if str(item.get("status", "active")).lower() == "active"]
+
+
+def localized_master_name(record: dict[str, Any], name_prefix: str) -> str:
+    for key in (f"{name_prefix}_zh", f"{name_prefix}_ja", f"{name_prefix}_en", name_prefix, "name", "display_name"):
+        value = str(record.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def masterdata_label(record: dict[str, Any], id_field: str, code_field: str, name_prefix: str) -> str:
+    code = str(record.get(code_field, "")).strip()
+    name = localized_master_name(record, name_prefix)
+    identifier = str(record.get(id_field, "")).strip()
+    if code and name:
+        return f"{code} - {name}"
+    return name or code or identifier
+
+
+def masterdata_select_options(
+    items: list[dict[str, Any]],
+    selected: str,
+    id_field: str,
+    code_field: str,
+    name_prefix: str,
+    include_blank_label: str = "",
+) -> str:
+    selected = str(selected or "").strip()
+    options = []
+    if include_blank_label:
+        options.append(f"<option value=''{' selected' if not selected else ''}>{h(include_blank_label)}</option>")
+    for item in sorted(active_masterdata_items(items), key=lambda row: masterdata_label(row, id_field, code_field, name_prefix)):
+        value = str(item.get(id_field) or item.get(code_field) or "").strip()
+        if not value:
+            continue
+        label = masterdata_label(item, id_field, code_field, name_prefix)
+        name = localized_master_name(item, name_prefix)
+        extra = []
+        if name:
+            extra.append(f"data-name='{h(name)}'")
+        if item.get("currency"):
+            extra.append(f"data-currency='{h(item.get('currency'))}'")
+        selected_attr = " selected" if value == selected else ""
+        options.append(f"<option value='{h(value)}'{selected_attr} {' '.join(extra)}>{h(label)}</option>")
+    return "".join(options)
+
+
+def department_select_options_for_user(user: dict[str, Any], entity_id: str, selected_department_id: str = "", include_blank: bool = True) -> str:
+    departments = fetch_masterdata_collection(user, "/api/departments", ("departments",), {"entity_id": entity_id}) if entity_id else []
+    if not departments and str(user.get("department_id", "")).strip():
+        departments = [{
+            "department_id": user.get("department_id", ""),
+            "department_code": user.get("department_code", ""),
+            "department_name_zh": user.get("department_name", ""),
+            "status": "active",
+        }]
+    return masterdata_select_options(departments, selected_department_id, "department_id", "department_code", "department_name", "选择部门 / Select Department" if include_blank else "")
+
+
+def counterparty_datalist_options(user: dict[str, Any], kind: str) -> str:
+    if kind == "customer":
+        rows = fetch_masterdata_collection(user, "/api/customers", ("customers",))
+        id_field, code_field, name_prefix = "customer_id", "customer_code", "customer_name"
+    else:
+        rows = fetch_masterdata_collection(user, "/api/vendors/active", ("vendors",))
+        id_field, code_field, name_prefix = "vendor_id", "vendor_code", "vendor_name"
+    options = []
+    for row in sorted(active_masterdata_items(rows), key=lambda item: masterdata_label(item, id_field, code_field, name_prefix)):
+        label = masterdata_label(row, id_field, code_field, name_prefix)
+        identifier = str(row.get(id_field) or row.get(code_field) or "").strip()
+        options.append(f"<option value='{h(label)}' label='{h(identifier)}'></option>")
+    return "".join(options)
+
+
+def documents(include_archived: bool = True) -> list[dict[str, Any]]:
+    rows = load_json_array(DOCUMENTS_PATH)
+    if include_archived:
+        return rows
+    return [row for row in rows if row.get("status") != "archived"]
 
 
 def versions() -> list[dict[str, Any]]:
@@ -889,7 +1022,7 @@ def document_email_messages(document_id: str) -> list[dict[str, Any]]:
 
 
 def active_documents() -> list[dict[str, Any]]:
-    return [row for row in documents() if row.get("status") != "archived"]
+    return documents(include_archived=False)
 
 
 def document_title(document_id: str) -> str:
@@ -1462,6 +1595,8 @@ def generate_template_document(form: dict[str, str], user: dict[str, Any], handl
         "business_line": doc_form["business_line"],
         "entity_id": requested_entity,
         "entity_name_snapshot": form.get("entity_name_snapshot", "").strip() or entity.get("entity_name_en") or entity.get("entity_name") or "",
+        "department_id": form.get("department_id", "").strip(),
+        "department_name_snapshot": form.get("department_name_snapshot", "").strip(),
         "customer_id": form.get("customer_id", "").strip(),
         "customer_name_snapshot": form.get("customer_name_snapshot", "").strip() or values.get("client_name", ""),
         "vendor_id": "",
@@ -1616,19 +1751,25 @@ def template_generate_form_html(template_id: str, user: dict[str, Any], form: di
     entity = user_entity(user)
     selected_entity_id = form.get("entity_id") or entity.get("entity_id") or entity.get("entity_code", "")
     entity_options = entity_select_options_for_user(user, selected_entity_id)
+    department_id = form.get("department_id") or str(user.get("department_id", ""))
+    department_name = form.get("department_name_snapshot") or str(user.get("department_name", ""))
+    department_options = department_select_options_for_user(user, selected_entity_id, department_id)
+    customer_options = counterparty_datalist_options(user, "customer")
     country_rule = country_rule_for(str(template.get("country_code", "")))
     body = page_header("Generate from Template", f"生成草稿：{template.get('template_name')}", "输入参数后生成 HTML 草稿，并自动进入 FileAdmin 文件台账。")
     body += "<section class='message-strip message-warning'>This is a system-suggested workflow-test template. It is not a formal approved company template and requires human review.</section>"
     body += f"""
-    <form method="post" action="/templates/generate">
+    <form method="post" action="/templates/generate" data-fileadmin-masterdata-form>
       <input type="hidden" name="template_id" value="{h(template_id)}">
       <section class="sap-section">
         <h3>Document Metadata</h3>
         <div class="form-grid">
           <div class="form-field"><label>Title</label><input name="title" value="{h(form.get('title', ''))}" placeholder="留空则自动生成标题"></div>
-          <div class="form-field"><label>Entity</label><select name="entity_id">{entity_options}</select></div>
-          <div class="form-field"><label>Entity Name Snapshot</label><input name="entity_name_snapshot" value="{h(form.get('entity_name_snapshot') or entity.get('entity_name_en') or entity.get('entity_name') or '')}"></div>
-          <div class="form-field"><label>Customer / Client Name</label><input name="customer_name_snapshot" value="{h(form.get('customer_name_snapshot', ''))}"></div>
+          <div class="form-field"><label>Entity</label><select name="entity_id" data-masterdata-entity>{entity_options}</select><small class="muted">来自 Master Data；切换后部门下拉会自动刷新。</small></div>
+          <div class="form-field"><label>Entity Name Snapshot</label><input name="entity_name_snapshot" value="{h(form.get('entity_name_snapshot') or entity.get('entity_name_en') or entity.get('entity_name') or '')}" data-masterdata-entity-name></div>
+          <div class="form-field"><label>Department</label><select name="department_id" data-masterdata-department data-selected="{h(department_id)}">{department_options}</select></div>
+          <div class="form-field"><label>Department Name Snapshot</label><input name="department_name_snapshot" value="{h(department_name)}" data-masterdata-department-name></div>
+          <div class="form-field"><label>Customer / Client Name</label><input name="customer_name_snapshot" list="fileadmin-customer-master" value="{h(form.get('customer_name_snapshot', ''))}" placeholder="可输入，也可从客户主数据建议中选择"><datalist id="fileadmin-customer-master">{customer_options}</datalist></div>
           <div class="form-field"><label>Owner User ID</label><input name="owner_user_id" value="{h(form.get('owner_user_id') or str(user.get('user_id', '')))}"></div>
           <div class="form-field"><label>Owner Name</label><input name="owner_name_snapshot" value="{h(form.get('owner_name_snapshot') or user_display_name(user))}"></div>
           <div class="form-field"><label>Confidentiality</label><select name="confidentiality_level">{option_html(CONFIDENTIALITY_LEVELS, form.get('confidentiality_level', 'personal_data'))}</select></div>
@@ -1818,17 +1959,18 @@ def generate_contract_reminders(doc: dict[str, Any], user: dict[str, Any], handl
 def page(title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/", flash: str = "", lang: str = DEFAULT_LANG) -> str:
     lang = normalize_lang(lang)
     nav_links = [
-        ("/dashboard", "nav.dashboard"),
-        ("/documents", "nav.documents"),
-        ("/documents/new", "nav.new_document"),
-        ("/templates", "nav.templates"),
-        ("/emails", "nav.emails"),
-        ("/reminders", "nav.reminders"),
-        ("/audit-logs", "nav.audit"),
+        ("/dashboard", "nav.dashboard", "fileadmin.access"),
+        ("/documents", "nav.documents", "fileadmin.view"),
+        ("/documents/new", "nav.new_document", "fileadmin.create"),
+        ("/templates", "nav.templates", "fileadmin.view"),
+        ("/emails", "nav.emails", "fileadmin.view"),
+        ("/reminders", "nav.reminders", "fileadmin.view"),
+        ("/audit-logs", "nav.audit", "fileadmin.audit.view"),
     ]
     nav_html = "".join(
         f'<a class="{h("active" if path == current_path else "")}" href="{h(url_with_lang(path, lang))}">{h(tr(lang, label_key))}</a>'
-        for path, label_key in nav_links
+        for path, label_key, permission_key in nav_links
+        if has_permission(user, permission_key)
     )
     portal_html = f'<a class="portal-link" href="{h(PORTAL_BASE_URL)}/dashboard" title="{h(tr(lang, "nav.portal"))}"><span class="portal-icon">⌂</span>{h(tr(lang, "nav.portal"))}</a>'
     entity = user_entity(user)
@@ -1889,6 +2031,85 @@ def page(title: str, body: str, user: dict[str, Any] | None = None, current_path
   <header><h1>{h(tr(lang, "app.title"))}</h1><p>{h(tr(lang, "app.subtitle"))}</p></header>
   <nav>{portal_html}{nav_html}{language_html}{user_html}</nav>
   <main>{flash_html}{body}</main>
+  <script>
+    (function () {{
+      function optionLabel(record, prefix, codeField, idField) {{
+        const name = record[prefix + '_zh'] || record[prefix + '_ja'] || record[prefix + '_en'] || record[prefix] || record.name || '';
+        const code = record[codeField] || '';
+        const id = record[idField] || '';
+        return code && name ? code + ' - ' + name : (name || code || id);
+      }}
+      function selectedOption(select) {{
+        return select && select.options && select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+      }}
+      function syncEntityName(form) {{
+        const entity = form.querySelector('[data-masterdata-entity]');
+        const target = form.querySelector('[data-masterdata-entity-name]');
+        const opt = selectedOption(entity);
+        if (target && opt && opt.dataset.name && !target.dataset.userEdited) target.value = opt.dataset.name;
+      }}
+      function syncDepartmentName(form) {{
+        const department = form.querySelector('[data-masterdata-department]');
+        const target = form.querySelector('[data-masterdata-department-name]');
+        const opt = selectedOption(department);
+        if (target && opt && !target.dataset.userEdited) target.value = opt.dataset.name || '';
+      }}
+      function fillDepartments(form, rows, selected) {{
+        const department = form.querySelector('[data-masterdata-department]');
+        if (!department) return;
+        department.innerHTML = '';
+        const blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = '选择部门 / Select Department';
+        department.appendChild(blank);
+        rows.forEach(function (row) {{
+          const value = row.department_id || row.department_code || '';
+          if (!value) return;
+          const opt = document.createElement('option');
+          opt.value = value;
+          opt.textContent = optionLabel(row, 'department_name', 'department_code', 'department_id');
+          opt.dataset.name = row.department_name_zh || row.department_name_ja || row.department_name_en || row.department_name || '';
+          if (value === selected) opt.selected = true;
+          department.appendChild(opt);
+        }});
+        department.disabled = !department.options.length;
+        syncDepartmentName(form);
+      }}
+      function loadDepartments(form) {{
+        const entity = form.querySelector('[data-masterdata-entity]');
+        const department = form.querySelector('[data-masterdata-department]');
+        if (!entity || !department) return;
+        const selected = department.dataset.selected || department.value || '';
+        if (!entity.value) {{
+          fillDepartments(form, [], selected);
+          return;
+        }}
+        department.disabled = true;
+        fetch('/api/masterdata/departments?entity_id=' + encodeURIComponent(entity.value), {{credentials: 'same-origin'}})
+          .then(function (response) {{ return response.ok ? response.json() : []; }})
+          .then(function (rows) {{ fillDepartments(form, Array.isArray(rows) ? rows : [], selected); }})
+          .catch(function () {{ department.disabled = false; }});
+      }}
+      document.addEventListener('DOMContentLoaded', function () {{
+        document.querySelectorAll('[data-fileadmin-masterdata-form]').forEach(function (form) {{
+          form.querySelectorAll('[data-masterdata-entity-name],[data-masterdata-department-name]').forEach(function (input) {{
+            input.addEventListener('input', function () {{ input.dataset.userEdited = 'true'; }});
+          }});
+          const entity = form.querySelector('[data-masterdata-entity]');
+          const department = form.querySelector('[data-masterdata-department]');
+          if (entity) {{
+            entity.addEventListener('change', function () {{
+              if (department) department.dataset.selected = '';
+              syncEntityName(form);
+              loadDepartments(form);
+            }});
+            syncEntityName(form);
+          }}
+          if (department) department.addEventListener('change', function () {{ syncDepartmentName(form); }});
+        }});
+      }});
+    }}());
+  </script>
 </body>
 </html>"""
 
@@ -1926,6 +2147,14 @@ def dashboard_html(user: dict[str, Any]) -> str:
         "FileAdmin Dashboard",
         "轻量管理客户合同、对外文书版本、到期提醒和审计记录。",
     )
+    quick_actions = []
+    if has_permission(user, "fileadmin.create"):
+        quick_actions.append('<a class="button" href="/documents/new">登记新文件</a>')
+    if has_permission(user, "fileadmin.view"):
+        quick_actions.append('<a class="button secondary" href="/documents">打开文件台账</a>')
+        quick_actions.append('<a class="button secondary" href="/reminders">查看到期提醒</a>')
+    quick_actions.append(f'<a class="button ghost" href="{h(PORTAL_BASE_URL)}/dashboard">返回主 Portal</a>')
+    quick_actions_html = "".join(quick_actions)
     body += f"""
     <section class="grid">
       <div class="card"><h3>Active Documents</h3><div class="metric">{len(active)}</div><p class="muted">当前未归档文件</p></div>
@@ -1935,12 +2164,7 @@ def dashboard_html(user: dict[str, Any]) -> str:
     </section>
     <section class="sap-section">
       <h3>Quick Actions</h3>
-      <div class="actions">
-        <a class="button" href="/documents/new">登记新文件</a>
-        <a class="button secondary" href="/documents">打开文件台账</a>
-        <a class="button secondary" href="/reminders">查看到期提醒</a>
-        <a class="button ghost" href="{h(PORTAL_BASE_URL)}/dashboard">返回主 Portal</a>
-      </div>
+      <div class="actions">{quick_actions_html}</div>
     </section>
     """
     body += "<section class='sap-section'><h3>Recent File Attachments</h3><div class='table-scroll'><table><tr><th>Uploaded</th><th>Document</th><th>Attachment</th><th>Role</th><th>Current</th></tr>"
@@ -1994,7 +2218,10 @@ def documents_html(query: dict[str, list[str]], user: dict[str, Any]) -> str:
         <div class="form-field"><label>Owner</label><input name="owner" value="{h(filters['owner'])}"></div>
         <div class="form-field"><label>&nbsp;</label><button type="submit">Filter</button></div>
       </form>
-      <div class="actions"><a class="button" href="/documents/new">登记新文件</a></div>
+    """
+    if has_permission(user, "fileadmin.create"):
+        body += "<div class='actions'><a class='button' href='/documents/new'>登记新文件</a></div>"
+    body += f"""
     </section>
     <section class="sap-section">
       <h3>Documents ({len(rows)})</h3>
@@ -2029,8 +2256,13 @@ def document_form_html(user: dict[str, Any], form: dict[str, str] | None = None)
     owner_id = form.get("owner_user_id") or str(user.get("user_id", ""))
     owner_name = form.get("owner_name_snapshot") or user_display_name(user)
     entity_options = entity_select_options_for_user(user, entity_id)
+    department_id = form.get("department_id") or str(user.get("department_id", ""))
+    department_name = form.get("department_name_snapshot") or str(user.get("department_name", ""))
+    department_options = department_select_options_for_user(user, entity_id, department_id)
+    customer_options = counterparty_datalist_options(user, "customer")
+    vendor_options = counterparty_datalist_options(user, "vendor")
     return page_header("New Document", "登记新文件", "建立文件 metadata，可同时上传第一版附件。") + f"""
-    <form method="post" action="/documents/new" enctype="multipart/form-data">
+    <form method="post" action="/documents/new" enctype="multipart/form-data" data-fileadmin-masterdata-form>
       <section class="sap-section">
         <h3>Basic Information</h3>
         <div class="form-grid">
@@ -2038,10 +2270,12 @@ def document_form_html(user: dict[str, Any], form: dict[str, str] | None = None)
           <div class="form-field"><label>Document No</label><input name="document_no" value="{h(form.get('document_no', ''))}" placeholder="留空自动编号"></div>
           <div class="form-field"><label>Document Type *</label><select name="document_type" required>{option_html(DOCUMENT_TYPES, form.get('document_type', 'contract_client_dispatch'))}</select></div>
           <div class="form-field"><label>Business Line *</label><select name="business_line" required>{option_html(BUSINESS_LINES, form.get('business_line', 'dispatch'))}</select></div>
-          <div class="form-field"><label>Entity</label><select name="entity_id">{entity_options}</select></div>
-          <div class="form-field"><label>Entity Name Snapshot</label><input name="entity_name_snapshot" value="{h(entity_name)}"></div>
-          <div class="form-field"><label>Customer Name</label><input name="customer_name_snapshot" value="{h(form.get('customer_name_snapshot', ''))}"></div>
-          <div class="form-field"><label>Vendor Name</label><input name="vendor_name_snapshot" value="{h(form.get('vendor_name_snapshot', ''))}"></div>
+          <div class="form-field"><label>Entity</label><select name="entity_id" data-masterdata-entity>{entity_options}</select><small class="muted">来自 Master Data；切换后部门下拉会自动刷新。</small></div>
+          <div class="form-field"><label>Entity Name Snapshot</label><input name="entity_name_snapshot" value="{h(entity_name)}" data-masterdata-entity-name></div>
+          <div class="form-field"><label>Department</label><select name="department_id" data-masterdata-department data-selected="{h(department_id)}">{department_options}</select></div>
+          <div class="form-field"><label>Department Name Snapshot</label><input name="department_name_snapshot" value="{h(department_name)}" data-masterdata-department-name></div>
+          <div class="form-field"><label>Customer Name</label><input name="customer_name_snapshot" list="fileadmin-customer-master" value="{h(form.get('customer_name_snapshot', ''))}" placeholder="可输入，也可从客户主数据建议中选择"><datalist id="fileadmin-customer-master">{customer_options}</datalist></div>
+          <div class="form-field"><label>Vendor Name</label><input name="vendor_name_snapshot" list="fileadmin-vendor-master" value="{h(form.get('vendor_name_snapshot', ''))}" placeholder="可输入，也可从供应商主数据建议中选择"><datalist id="fileadmin-vendor-master">{vendor_options}</datalist></div>
           <div class="form-field"><label>Project Name</label><input name="project_name_snapshot" value="{h(form.get('project_name_snapshot', ''))}"></div>
           <div class="form-field"><label>Owner User ID</label><input name="owner_user_id" value="{h(owner_id)}"></div>
           <div class="form-field"><label>Owner Name</label><input name="owner_name_snapshot" value="{h(owner_name)}"></div>
@@ -2062,7 +2296,7 @@ def document_form_html(user: dict[str, Any], form: dict[str, str] | None = None)
           <div class="form-field"><label>Renewal Notice Days</label><input type="number" name="renewal_notice_days" value="{h(form.get('renewal_notice_days', '60'))}"></div>
           <div class="form-field"><label>Termination Notice Days</label><input type="number" name="termination_notice_days" value="{h(form.get('termination_notice_days', '60'))}"></div>
           <div class="form-field"><label>Contract Amount</label><input name="contract_amount" value="{h(form.get('contract_amount', ''))}"></div>
-          <div class="form-field"><label>Currency</label><input name="currency" value="{h(form.get('currency', 'JPY'))}"></div>
+          <div class="form-field"><label>Currency</label><select name="currency">{text_option_html(['JPY', 'SGD', 'CNY', 'USD', 'EUR'], form.get('currency', 'JPY'))}</select></div>
         </div>
         <div class="form-grid">
           <div class="form-field"><label>Payment Terms</label><textarea name="payment_terms">{h(form.get('payment_terms', ''))}</textarea></div>
@@ -2119,6 +2353,8 @@ def create_document(form: dict[str, str], files: dict[str, tuple[str, bytes, str
         "business_line": business_line,
         "entity_id": form.get("entity_id", "").strip(),
         "entity_name_snapshot": form.get("entity_name_snapshot", "").strip(),
+        "department_id": form.get("department_id", "").strip(),
+        "department_name_snapshot": form.get("department_name_snapshot", "").strip(),
         "customer_id": form.get("customer_id", "").strip(),
         "customer_name_snapshot": form.get("customer_name_snapshot", "").strip(),
         "vendor_id": form.get("vendor_id", "").strip(),
@@ -2475,9 +2711,13 @@ def email_detail_html(email_id: str, user: dict[str, Any]) -> str:
 def attachment_actions_html(doc: dict[str, Any], attachment: dict[str, Any], user: dict[str, Any]) -> str:
     file_id = str(attachment.get("file_id", ""))
     eligible, reason = email_send_eligibility(user, doc, attachment)
-    actions = [f"<a class='button ghost' href='/attachments/download?file_id={h(file_id)}'>Download</a>"]
+    actions = []
+    if can_download_attachment(user, doc, attachment):
+        actions.append(f"<a class='button ghost' href='/attachments/download?file_id={h(file_id)}'>Download</a>")
     if eligible:
         actions.append(f"<a class='button secondary' href='/emails/new?document_id={h(doc.get('document_id'))}&file_id={h(file_id)}'>Send Email</a>")
+    if not actions:
+        actions.append("<span class='muted'>No available actions</span>")
     eligibility_html = f"<div style='margin-top:6px;'>{status_badge('can_send' if eligible else 'blocked')}<br><small class='muted'>{h(reason)}</small></div>"
     return " ".join(actions) + eligibility_html
 
@@ -2537,14 +2777,16 @@ def document_detail_html(document_id: str, user: dict[str, Any]) -> str:
         ("Owner", str(doc.get("owner_name_snapshot") or doc.get("owner_user_id") or "")),
     ]
     body = page_header("Document Detail", str(doc.get("title", "")), str(doc.get("summary", "")), meta)
+    detail_actions = []
+    if can_upload_attachment(user, doc):
+        detail_actions.append(f'<a class="button" href="/versions/upload?document_id={h(document_id)}">Upload File Attachment</a>')
+    detail_actions.append('<a class="button secondary" href="/documents">Back to Register</a>')
+    detail_actions.append(f'<a class="button ghost" href="{h(PORTAL_BASE_URL)}/dashboard">Back to Portal</a>')
+    detail_actions_html = "".join(detail_actions)
     body += f"""
     <section class="sap-section">
       <h3>Actions</h3>
-      <div class="actions">
-        <a class="button" href="/versions/upload?document_id={h(document_id)}">Upload File Attachment</a>
-        <a class="button secondary" href="/documents">Back to Register</a>
-        <a class="button ghost" href="{h(PORTAL_BASE_URL)}/dashboard">Back to Portal</a>
-      </div>
+      <div class="actions">{detail_actions_html}</div>
     </section>
     <section class="sap-section">
       <h3>Document Metadata</h3>
@@ -2552,6 +2794,7 @@ def document_detail_html(document_id: str, user: dict[str, Any]) -> str:
         <div class="sap-readonly-field"><div class="label">Type</div><div class="value">{h(doc.get('document_type'))}</div></div>
         <div class="sap-readonly-field"><div class="label">Business Line</div><div class="value">{h(doc.get('business_line'))}</div></div>
         <div class="sap-readonly-field"><div class="label">Entity</div><div class="value">{h(doc.get('entity_id'))} {h(doc.get('entity_name_snapshot'))}</div></div>
+        <div class="sap-readonly-field"><div class="label">Department</div><div class="value">{h(doc.get('department_id') or '-')} {h(doc.get('department_name_snapshot') or '')}</div></div>
         <div class="sap-readonly-field"><div class="label">Counterparty</div><div class="value">{h(doc.get('customer_name_snapshot') or doc.get('vendor_name_snapshot') or doc.get('project_name_snapshot') or '-')}</div></div>
         <div class="sap-readonly-field"><div class="label">Confidentiality</div><div class="value">{h(doc.get('confidentiality_level'))}</div></div>
         <div class="sap-readonly-field"><div class="label">Language</div><div class="value">{h(doc.get('language'))}</div></div>
@@ -2590,21 +2833,30 @@ def document_detail_html(document_id: str, user: dict[str, Any]) -> str:
         effective_period = f"{row.get('file_effective_start_date', '')} → {row.get('file_effective_end_date', '')}".strip(" →")
         body += f"<tr><td><strong>{h(row.get('file_title') or row.get('original_filename'))}</strong><br><small class='muted'>{h(row.get('file_description') or row.get('notes') or '-')}</small><br><small>{h(row.get('original_filename'))}</small></td><td>{h(row.get('file_type'))}<br><small class='muted'>{h(row.get('file_role'))}</small></td><td>{h(row.get('version_no'))}<br>{status_badge(str(row.get('file_status') or row.get('status') or 'active'))}</td><td>{status_badge('current') if row.get('is_current') else h('history')}</td><td>{status_badge('signed') if row.get('is_signed') else h('not signed')}</td><td>{h(row.get('language'))}<br><small>{h(row.get('confidentiality_level'))}</small></td><td>{h(effective_period or '-')}</td><td>{h(row.get('uploaded_at'))}<br><small>{h(row.get('uploaded_by'))}</small></td><td>{attachment_actions_html(doc, row, user)}</td></tr>"
     if not attachment_rows:
-        body += "<tr><td colspan='9' class='muted'>No file attachments yet. Use Upload File Attachment to add the main contract, NDA, amendment, signed scan, email evidence, or template file.</td></tr>"
+        empty_attachment_text = "No file attachments yet. Use Upload File Attachment to add the main contract, NDA, amendment, signed scan, email evidence, or template file."
+        if not can_upload_attachment(user, doc):
+            empty_attachment_text = "No file attachments yet."
+        body += f"<tr><td colspan='9' class='muted'>{h(empty_attachment_text)}</td></tr>"
     body += "</table></div></section>"
 
     if current_version:
+        current_version_action = ""
+        if can_download_version(user, doc, current_version):
+            current_version_action = f"<div class='actions'><a class='button' href='/versions/download?version_id={h(current_version.get('version_id'))}'>Download Current Version</a></div>"
+        else:
+            current_version_action = "<p class='muted'>No download permission for the current version.</p>"
         body += f"""
         <section class="sap-section">
           <h3>当前最新版本</h3>
           <p>{status_badge(str(current_version.get('status', '')))} <strong>{h(current_version.get('version_no'))}</strong> — {h(current_version.get('original_filename'))}</p>
           <p class="muted">SHA-256: {h(current_version.get('sha256'))}</p>
-          <div class="actions"><a class="button" href="/versions/download?version_id={h(current_version.get('version_id'))}">Download Current Version</a></div>
+          {current_version_action}
         </section>
         """
     body += "<section class='sap-section'><h3>版本历史</h3><p class='notice'>上传新版本后会自动成为最新版本；旧版本会保留为 replaced 历史版本，并保留上传人与变更原因。</p><div class='table-scroll'><table><tr><th>Version</th><th>Status</th><th>Current</th><th>File</th><th>Uploaded</th><th>Change Reason</th><th>Hash</th><th>Action</th></tr>"
     for row in sorted(document_versions(document_id), key=lambda item: str(item.get("uploaded_at", "")), reverse=True):
-        body += f"<tr><td>{h(row.get('version_no'))}</td><td>{status_badge(str(row.get('status', '')))}</td><td>{status_badge('current') if row.get('is_current') else h('history')}</td><td>{h(row.get('original_filename'))}</td><td>{h(row.get('uploaded_at'))}<br><small>{h(row.get('uploaded_by'))}</small></td><td>{h(row.get('change_reason') or row.get('notes') or '-')}</td><td><small>{h(row.get('sha256'))}</small></td><td><a class='button ghost' href='/versions/download?version_id={h(row.get('version_id'))}'>Download</a></td></tr>"
+        version_action = f"<a class='button ghost' href='/versions/download?version_id={h(row.get('version_id'))}'>Download</a>" if can_download_version(user, doc, row) else "<span class='muted'>No download permission</span>"
+        body += f"<tr><td>{h(row.get('version_no'))}</td><td>{status_badge(str(row.get('status', '')))}</td><td>{status_badge('current') if row.get('is_current') else h('history')}</td><td>{h(row.get('original_filename'))}</td><td>{h(row.get('uploaded_at'))}<br><small>{h(row.get('uploaded_by'))}</small></td><td>{h(row.get('change_reason') or row.get('notes') or '-')}</td><td><small>{h(row.get('sha256'))}</small></td><td>{version_action}</td></tr>"
     if not document_versions(document_id):
         body += "<tr><td colspan='8' class='muted'>No version uploaded yet.</td></tr>"
     body += "</table></div></section>"
@@ -2628,7 +2880,7 @@ def document_detail_html(document_id: str, user: dict[str, Any]) -> str:
     if not related_audit:
         body += "<tr><td colspan='4' class='muted'>No audit events.</td></tr>"
     body += "</table></div></section>"
-    if doc.get("status") != "archived":
+    if can_archive_document(user, doc):
         body += f"""
         <section class="sap-section">
           <h3>Archive Document</h3>
@@ -2704,6 +2956,31 @@ class FileAdminHandler(BaseHTTPRequestHandler):
                 return
             if path == "/":
                 self._send_redirect("/dashboard")
+                return
+            if path == "/api/masterdata/entities":
+                user = self.require_user("fileadmin.access")
+                if not user:
+                    return
+                self._send_json(fetch_masterdata_collection(user, "/api/entities", ("entities",)))
+                return
+            if path == "/api/masterdata/departments":
+                user = self.require_user("fileadmin.access")
+                if not user:
+                    return
+                entity_id = query.get("entity_id", [""])[0].strip()
+                self._send_json(fetch_masterdata_collection(user, "/api/departments", ("departments",), {"entity_id": entity_id}))
+                return
+            if path == "/api/masterdata/customers":
+                user = self.require_user("fileadmin.access")
+                if not user:
+                    return
+                self._send_json(fetch_masterdata_collection(user, "/api/customers", ("customers",)))
+                return
+            if path == "/api/masterdata/vendors":
+                user = self.require_user("fileadmin.access")
+                if not user:
+                    return
+                self._send_json(fetch_masterdata_collection(user, "/api/vendors/active", ("vendors",)))
                 return
             if path == "/dashboard":
                 user = self.require_user("fileadmin.access")
@@ -2971,6 +3248,14 @@ class FileAdminHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_json(self, data: Any, status: int = 200) -> None:
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _send_text(self, text: str, status: int = 200) -> None:
         payload = text.encode("utf-8")
         self.send_response(status)
@@ -3040,11 +3325,7 @@ class FileAdminHandler(BaseHTTPRequestHandler):
             return
         doc = find_document(str(version.get("document_id", "")))
         attachment = find_file_attachment(str(version.get("file_id", ""))) if version.get("file_id") else None
-        if attachment:
-            if not can_download_attachment(user, doc, attachment):
-                self._send_html(page("Forbidden", forbidden_html("You do not have permission to download this version."), user), status=403)
-                return
-        elif not can_view_document(user, doc) or not has_permission(user, "fileadmin.download"):
+        if not can_download_version(user, doc, version):
             self._send_html(page("Forbidden", forbidden_html("You do not have permission to download this version."), user), status=403)
             return
         relative = Path(str(version.get("stored_path", "")))

@@ -55,13 +55,30 @@ TAC-employeeadmin will be the bilingual English/Japanese employee master data fo
 ## Payroll Information
 
 - Bank information.
-- Salary type.
-- Salary amount.
+- Salary type: monthly, hourly, daily, or annual.
+- Currency: dropdown selection from supported currencies (SGD, USD, CNY, INR, TWD, JPY).
+- Monthly base salary — required when salary type is `monthly`.
+- Daily wage — required when salary type is `daily`.
+- Hourly wage — required when salary type is `hourly`.
+- Salary amount (JPY) — general-purpose JPY salary field.
 - Transportation allowance.
 - Bonus eligibility.
 - Social insurance.
 - Pension.
 - Employment insurance.
+
+### Payroll Data Completeness Rules
+
+- If `salary_type = monthly` → `monthly_base_salary` is required.
+- If `salary_type = daily` → `daily_wage` is required.
+- If `salary_type = hourly` → `hourly_wage` is required.
+- All money fields must be non-negative integers (no floating-point values).
+
+### Currency Validation
+
+- Supported currencies: SGD, USD, CNY, INR, TWD, JPY.
+- Currency is selected from a dropdown; unsupported values trigger a validation error.
+- Currency codes are stored uppercase.
 
 ## Visa Management
 

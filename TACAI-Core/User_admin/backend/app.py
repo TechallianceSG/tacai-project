@@ -52,7 +52,7 @@ REMOTE_COOKIE_DOMAIN = os.environ.get("TACAI_COOKIE_DOMAIN", "").strip()
 REMOTE_COOKIE_SECURE = os.environ.get("TACAI_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes", "on"} or USER_ADMIN_PUBLIC_BASE_URL.startswith("https://")
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009}
+LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8011, 8015, 8016, 8017}
 
 
 def base_url_host(value: str) -> str:
@@ -190,6 +190,23 @@ PERMISSION_DEFINITIONS = [
     ("fileadmin.reminders.manage", "fileadmin", "reminders_manage"),
     ("fileadmin.audit.view", "fileadmin", "audit_view"),
     ("fileadmin.download", "fileadmin", "download"),
+    ("tacaipay_sg.access", "tacaipay_sg", "access"),
+    ("tacaipay_sg.view", "tacaipay_sg", "view"),
+    ("tacaipay_sg.manage", "tacaipay_sg", "manage"),
+    ("tacaipay_sg.calculate", "tacaipay_sg", "calculate"),
+    ("tacaipay_sg.approve", "tacaipay_sg", "approve"),
+    ("tacaipay_sg.release_payment", "tacaipay_sg", "release_payment"),
+    ("tacaipay_sg.pay", "tacaipay_sg", "pay"),
+    ("tacaipay_sg.reports.view", "tacaipay_sg", "reports_view"),
+    ("tacaipay_sg.audit.view", "tacaipay_sg", "audit_view"),
+    ("tacaipay_jp.access", "tacaipay_jp", "access"),
+    ("tacaipay_jp.view", "tacaipay_jp", "view"),
+    ("tacaipay_jp.manage", "tacaipay_jp", "manage"),
+    ("tacaipay_jp.calculate", "tacaipay_jp", "calculate"),
+    ("tacaipay_jp.approve", "tacaipay_jp", "approve"),
+    ("tacaipay_jp.release_payment", "tacaipay_jp", "release_payment"),
+    ("tacaipay_jp.reports.view", "tacaipay_jp", "reports_view"),
+    ("tacaipay_jp.audit.view", "tacaipay_jp", "audit_view"),
 ]
 
 ROLE_PERMISSION_KEYS = {
@@ -230,6 +247,20 @@ ROLE_PERMISSION_KEYS = {
         "fileadmin.reminders.manage",
         "fileadmin.audit.view",
         "fileadmin.download",
+        "tacaipay_sg.access",
+        "tacaipay_sg.view",
+        "tacaipay_sg.manage",
+        "tacaipay_sg.calculate",
+        "tacaipay_sg.approve",
+        "tacaipay_sg.reports.view",
+        "tacaipay_sg.audit.view",
+        "tacaipay_jp.access",
+        "tacaipay_jp.view",
+        "tacaipay_jp.manage",
+        "tacaipay_jp.calculate",
+        "tacaipay_jp.approve",
+        "tacaipay_jp.reports.view",
+        "tacaipay_jp.audit.view",
     ],
     "finance": [
         "payroll.access",
@@ -257,6 +288,15 @@ ROLE_PERMISSION_KEYS = {
         "fileadmin.upload",
         "fileadmin.reminders.manage",
         "fileadmin.download",
+        "tacaipay_sg.access",
+        "tacaipay_sg.view",
+        "tacaipay_sg.release_payment",
+        "tacaipay_sg.pay",
+        "tacaipay_sg.reports.view",
+        "tacaipay_jp.access",
+        "tacaipay_jp.view",
+        "tacaipay_jp.release_payment",
+        "tacaipay_jp.reports.view",
     ],
     "manager": [
         "timesheet.access",
@@ -984,9 +1024,11 @@ def session_has_active_entity(session: dict[str, Any]) -> bool:
 
 def effective_permissions(user_id: str) -> list[str]:
     role_keys = active_user_role_keys(user_id)
-    if "system_admin" in role_keys:
-        return sorted(permission[0] for permission in PERMISSION_DEFINITIONS)
     permission_by_id = {permission.get("permission_id"): permission for permission in load_permissions()}
+    if "system_admin" in role_keys:
+        configured = {str(permission.get("permission_key")) for permission in permission_by_id.values() if permission.get("active", True)}
+        seeded = {permission[0] for permission in PERMISSION_DEFINITIONS}
+        return sorted(configured | seeded)
     roles = {role.get("role_id"): role for role in load_roles()}
     effective: set[str] = set()
     for mapping in load_role_permission_mappings():

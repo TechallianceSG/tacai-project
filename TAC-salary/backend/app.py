@@ -46,13 +46,20 @@ TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or 
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 USER_ADMIN_SESSION_COOKIE = "tacai_session_id"
 REQUIRED_MODULE_PERMISSION = "payroll.access"
-AUTH_ENFORCEMENT = os.environ.get("TAC_SALARY_AUTH_ENFORCEMENT", "soft").strip().lower()
+AUTH_ENFORCEMENT = os.environ.get("TAC_SALARY_AUTH_ENFORCEMENT", "strict").strip().lower()
+MAX_POST_BYTES = 16 * 1024 * 1024  # 16MB for Excel uploads
+MAX_POST_BYTES_DEFAULT = 2 * 1024 * 1024  # 2MB for regular form POSTs
 USER_ADMIN_BASE_URL = (os.environ.get("USER_ADMIN_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8006").strip() or f"http://{TACAI_PUBLIC_HOST}:8006").rstrip("/")
 USER_ADMIN_INTERNAL_BASE_URL = (os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", f"http://{TACAI_INTERNAL_HOST}:8006").strip() or f"http://{TACAI_INTERNAL_HOST}:8006").rstrip("/")
 EMPLOYEEADMIN_INTERNAL_BASE_URL = (os.environ.get("EMPLOYEEADMIN_INTERNAL_BASE_URL", f"http://{TACAI_INTERNAL_HOST}:8004").strip() or f"http://{TACAI_INTERNAL_HOST}:8004").rstrip("/")
 EMPLOYEEADMIN_LOCAL_FILE = PROJECT_ROOT.parent / "TAC-employeeadmin" / "database" / "employees.json"
 PORTAL_BASE_URL = (os.environ.get("PORTAL_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8005").strip() or f"http://{TACAI_PUBLIC_HOST}:8005").rstrip("/")
 APP_BASE_URL = ((os.environ.get("TAC_PAYROLL_PUBLIC_BASE_URL") or os.environ.get("SALARY_PUBLIC_BASE_URL") or f"http://{TACAI_PUBLIC_HOST}:8005").strip() or f"http://{TACAI_PUBLIC_HOST}:8005").rstrip("/")
+
+# Message Center integration
+TACAIMSG_INTERNAL_BASE_URL = (os.environ.get("TACAIMSG_INTERNAL_BASE_URL", f"http://{TACAI_INTERNAL_HOST}:8012").strip() or f"http://{TACAI_INTERNAL_HOST}:8012").rstrip("/")
+TACAIMSG_INTERNAL_TOKEN = os.environ.get("TACAIMSG_INTERNAL_TOKEN", "tacai-internal-token").strip()
+TAC_SALARY_MSG_CENTER_ENABLED = os.environ.get("TAC_SALARY_MSG_CENTER_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
 
 PAYROLL_BATCHES_FILE = DATA_DIR / "payroll_batches.json"
 PAYROLL_RECORDS_JP_FILE = DATA_DIR / "payroll_records_jp.json"
@@ -194,7 +201,7 @@ PAYROLL_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
 FILE_LOCK = threading.RLock()
 DRAFT_SALARY_STATUS = "draft"
 ACTIVE_SALARY_STATUS = "active"
-PAYROLL_ELIGIBLE_SALARY_STATUSES = {ACTIVE_SALARY_STATUS}
+PAYROLL_ELIGIBLE_SALARY_STATUSES = {ACTIVE_SALARY_STATUS, DRAFT_SALARY_STATUS}
 SALARY_RULE_TYPES = {"monthly_fixed", "monthly_prorated", "hourly", "daily"}
 LOCKED_BATCH_STATUSES = {"finalized", "payment_prepared", "paid", "archived"}
 ACTIVE_BATCH_STATUSES = {
@@ -663,8 +670,12 @@ def normalize_salary_calculation_rule(payload: dict, existing: dict | None = Non
         "base_rate": base_rate,
         "hourly_rate": money(payload.get("hourly_rate", existing_rule.get("hourly_rate", base_salary if rule_type == "hourly" else 0))),
         "daily_rate": money(payload.get("daily_rate", existing_rule.get("daily_rate", base_salary if rule_type == "daily" else 0))),
-        "standard_hours_per_month": money(payload.get("standard_hours_per_month", existing_rule.get("standard_hours_per_month", 160))),
         "standard_days_per_month": money(payload.get("standard_days_per_month", existing_rule.get("standard_days_per_month", 20))),
+        "standard_hours_per_month": money(
+            payload["standard_hours_per_month"] if "standard_hours_per_month" in payload else
+            (money(payload["standard_days_per_month"]) * 8 if "standard_days_per_month" in payload else
+             existing_rule.get("standard_hours_per_month", 160))
+        ),
         "actual_work_hours": money(payload.get("actual_work_hours", existing_rule.get("actual_work_hours", 0))),
         "actual_work_days": money(payload.get("actual_work_days", existing_rule.get("actual_work_days", 0))),
         "proration_method": clean_text(payload.get("proration_method") or existing_rule.get("proration_method") or "calendar_days"),
@@ -715,6 +726,9 @@ def normalize_salary_master(payload: dict, existing: dict | None = None) -> dict
     record["salary_type"] = clean_text(record.get("salary_type") or "monthly")
     record["employment_type"] = clean_text(record.get("employment_type") or "regular")
     record["work_city"] = clean_text(record.get("work_city"))
+    record["department_id"] = clean_text(record.get("department_id") or (existing or {}).get("department_id", ""))
+    record["team_id"] = clean_text(record.get("team_id") or (existing or {}).get("team_id", ""))
+    record["team_name"] = clean_text(record.get("team_name") or (existing or {}).get("team_name", ""))
     record["effective_from"] = clean_text(record.get("effective_from") or "2026-01-01")
     record["effective_to"] = clean_text(record.get("effective_to"))
     record["rule_version_id"] = clean_text(record.get("rule_version_id")) or default_rule_version_id(country_code, record["effective_from"][:7])
@@ -801,10 +815,10 @@ def salary_profile_batch_validation(profile: dict, batch: dict) -> tuple[bool, l
     payroll_month = batch.get("payroll_month", "")
     employee_id = clean_text(profile.get("employee_id") or "unknown employee")
     if profile.get("status") not in PAYROLL_ELIGIBLE_SALARY_STATUSES:
-        errors.append(f"{employee_id}: salary profile status is {profile.get('status') or 'blank'}, not active")
+        errors.append(f"{employee_id}: salary profile status is {profile.get('status') or 'blank'}, not active or draft")
     completeness = salary_master_completeness(profile)
     if not completeness["pay_complete"]:
-        errors.append(f"{employee_id}: salary profile is pay-incomplete ({', '.join(completeness['missing_fields'])})")
+        warnings.append(f"{employee_id}: salary profile is pay-incomplete ({', '.join(completeness['missing_fields'])}) — copied with zero/empty values")
     if profile.get("country_code") != batch.get("country_code") or profile.get("entity_id") != batch.get("entity_id"):
         errors.append(f"{employee_id}: salary profile country/entity does not match batch")
     effective_to = clean_text(profile.get("effective_to"))
@@ -1050,6 +1064,8 @@ def merge_employeeadmin_with_salary_master(batch: dict, employees: list[dict], p
         enriched["employee_name"] = snapshot.get("employee_name") or enriched.get("employee_name")
         enriched["employeeadmin_snapshot"] = snapshot
         enriched["department"] = snapshot.get("department", "")
+        enriched["team_id"] = snapshot.get("team_id", "")
+        enriched["team_name"] = snapshot.get("team_name", "")
         enriched["work_city"] = snapshot.get("work_city") or enriched.get("work_city", "")
         enriched["employment_type"] = snapshot.get("employment_type") or enriched.get("employment_type", "regular")
         if snapshot.get("contract_start_date") or snapshot.get("contract_end_date") or snapshot.get("employment_start_date") or snapshot.get("employment_end_date"):
@@ -1077,6 +1093,11 @@ def salary_profiles_with_employeeadmin(batch: dict, session_id: str = "", allow_
         if merged:
             return merged, "employeeadmin", warnings
     if allow_fallback:
+        if not local_profiles:
+            if not all_profiles:
+                warnings.append("Salary master is empty. Please import EmployeeAdmin profiles via 'Import EmployeeAdmin Draft Profiles' first, then complete and activate the salary profiles before loading payroll.")
+            else:
+                warnings.append(f"All {len(all_profiles)} salary profiles have warnings (pay-incomplete, draft, or outside payroll period). Payroll records will be created with zero/empty values where data is missing.")
         return local_profiles, "salary_master_fallback", warnings
     if warnings:
         raise ValueError("; ".join(warnings))
@@ -1127,6 +1148,8 @@ def salary_master_payload_from_employeeadmin(employee: dict, effective_from: str
         "status": target_status,
         "department": employee.get("department", ""),
         "department_id": employee.get("department_id", ""),
+        "team_id": employee.get("team_id", ""),
+        "team_name": employee.get("team_label") or employee.get("team_name") or "",
         "position": employee.get("position", ""),
         "contract_start_date": employee.get("contract_start_date", ""),
         "contract_end_date": employee.get("contract_end_date", ""),
@@ -1559,8 +1582,9 @@ def calculate_batch(batch_id: str, payload: dict) -> dict:
     write_json(path, records)
     totals = calculate_batch_totals(calculated)
     updated_batch = update_batch(batch_id, {"status": "calculated", **totals, "calculated_at": now_iso()})
-    append_audit("salary", batch_id, "payroll_calculated", clean_text(payload.get("user") or "local_admin"), None, {"calculated_count": len(calculated), "batch": updated_batch}, submodule="payroll_batch", batch_id=batch_id, country_code=batch["country_code"], entity_id=batch["entity_id"])
-    return {"batch": updated_batch, "calculated_count": len(calculated), "records": calculated}
+    error_records = [r for r in calculated if r.get("status") == "validation_error"]
+    append_audit("salary", batch_id, "payroll_calculated", clean_text(payload.get("user") or "local_admin"), None, {"calculated_count": len(calculated), "error_count": len(error_records), "batch": updated_batch}, submodule="payroll_batch", batch_id=batch_id, country_code=batch["country_code"], entity_id=batch["entity_id"])
+    return {"batch": updated_batch, "calculated_count": len(calculated), "error_count": len(error_records), "records": calculated, "error_records": [{"payroll_record_id": r["payroll_record_id"], "employee_id": r.get("employee_id"), "status": r.get("status"), "calculation_messages": r.get("calculation_messages", [])} for r in error_records]}
 
 
 def adjust_record(record_id: str, payload: dict) -> dict:
@@ -1961,6 +1985,7 @@ def matches_query(record: dict, query: dict[str, list[str]], record_type: str = 
         "entity": ("entity_id", "legal_entity_id", "entity_snapshot.entity_id", "entity_snapshot.entity_code", "entity_snapshot.entity_name_en", "entity_snapshot.entity_name_local"),
         "department_id": ("department_id", "employeeadmin_snapshot.department_id", "employee_snapshot.department_id", "salary_profile_snapshot.department_id"),
         "department": ("department", "department_id", "employeeadmin_snapshot.department", "employeeadmin_snapshot.department_id", "employee_snapshot.department", "employee_snapshot.department_id", "salary_profile_snapshot.department", "salary_profile_snapshot.department_id"),
+        "team": ("team_name", "team_id", "employeeadmin_snapshot.team_name", "employeeadmin_snapshot.team_id", "employee_snapshot.team_name", "employee_snapshot.team_id", "salary_profile_snapshot.team_name", "salary_profile_snapshot.team_id"),
         "team_id": ("team_id", "employeeadmin_snapshot.team_id", "employee_snapshot.team_id", "salary_profile_snapshot.team_id"),
         "employee": ("employee_id", "employee_no", "employee_number", "employee_name", "recipient_employee_id", "employeeadmin_snapshot.employee_id", "employeeadmin_snapshot.employee_no", "employeeadmin_snapshot.employee_name", "employee_snapshot.employee_id", "employee_snapshot.employee_no", "employee_snapshot.employee_name", "salary_profile_snapshot.employee_id", "salary_profile_snapshot.employee_no", "salary_profile_snapshot.employee_name"),
         "employee_id": ("employee_id", "recipient_employee_id", "employeeadmin_snapshot.employee_id", "employee_snapshot.employee_id", "salary_profile_snapshot.employee_id"),
@@ -1983,10 +2008,10 @@ def matches_query(record: dict, query: dict[str, list[str]], record_type: str = 
     if keyword:
         searchable_paths = (
             "batch_id", "payroll_record_id", "profile_id", "payment_id", "notice_id", "feedback_id",
-            "employee_id", "employee_no", "employee_number", "employee_name", "department", "department_id",
-            "employeeadmin_snapshot.employee_no", "employeeadmin_snapshot.employee_name", "employeeadmin_snapshot.department", "employeeadmin_snapshot.department_id",
-            "employee_snapshot.employee_no", "employee_snapshot.employee_name", "employee_snapshot.department", "employee_snapshot.department_id",
-            "salary_profile_snapshot.employee_no", "salary_profile_snapshot.employee_name", "salary_profile_snapshot.department",
+            "employee_id", "employee_no", "employee_number", "employee_name", "department", "department_id", "team_name", "team_id",
+            "employeeadmin_snapshot.employee_no", "employeeadmin_snapshot.employee_name", "employeeadmin_snapshot.department", "employeeadmin_snapshot.department_id", "employeeadmin_snapshot.team_name", "employeeadmin_snapshot.team_id",
+            "employee_snapshot.employee_no", "employee_snapshot.employee_name", "employee_snapshot.department", "employee_snapshot.department_id", "employee_snapshot.team_name", "employee_snapshot.team_id",
+            "salary_profile_snapshot.employee_no", "salary_profile_snapshot.employee_name", "salary_profile_snapshot.department", "salary_profile_snapshot.team_name", "salary_profile_snapshot.team_id",
             "entity_id", "legal_entity_id", "entity_snapshot.entity_code", "entity_snapshot.entity_name_en", "entity_snapshot.entity_name_local", "payroll_month", "country_code", "status", "payment_status", "feedback_status", "notes", "message",
         )
         if keyword.casefold() not in query_value(record, searchable_paths).casefold():
@@ -2049,6 +2074,147 @@ def payroll_report(report_type: str, query: dict[str, list[str]] | None = None) 
             "amount": amount,
         })
     return {"report_type": report_type, "generated_at": now_iso(), "scope": scope, "rows": rows, "total_amount": round(sum(row["amount"] for row in rows), 2)}
+
+
+def payroll_records_report(query: dict[str, list[str]] | None = None) -> dict:
+    """Return individual payroll records for the reports page with full filtering."""
+    query = query or {}
+    records = all_payroll_records(query)
+    return {
+        "report_type": "payroll-records",
+        "generated_at": now_iso(),
+        "rows": records,
+        "total_count": len(records),
+    }
+
+
+def payslip_html(record: dict) -> str:
+    """Generate an HTML salary slip for browser preview."""
+    employee = record.get("employee_snapshot", {})
+    earnings = record.get("earnings", {})
+    deductions = record.get("deductions", {})
+    employer_costs = record.get("employer_costs", {})
+    currency = record.get("currency", "")
+    name = employee.get("employee_name") or record.get("employee_name", "")
+    emp_id = record.get("employee_id", "")
+    payroll_month = record.get("payroll_month", "")
+    entity_id = record.get("entity_id", "")
+    country_code = record.get("country_code", "")
+    department = employee.get("department", "")
+    team_name = employee.get("team_name", "")
+    employment_type = employee.get("employment_type", "")
+    gross_pay = money(record.get("gross_pay", 0))
+    deduction_total = money(record.get("deduction_total", 0))
+    net_pay = money(record.get("net_pay", 0))
+    employer_cost_total = money(record.get("employer_cost_total", 0))
+    manual_adjustments_total = money(record.get("manual_adjustments_total", 0))
+
+    earning_labels = {
+        "base_salary": "Base Salary / 基本工资",
+        "position_allowance": "Position Allowance / 岗位津贴",
+        "commute_allowance": "Commute Allowance / 通勤津贴",
+        "housing_allowance": "Housing Allowance / 住房津贴",
+        "other_allowance": "Other Allowance / 其他津贴",
+        "overtime_pay": "Overtime Pay / 加班费",
+        "late_night_overtime_pay": "Late Night OT Pay / 深夜加班费",
+        "holiday_work_pay": "Holiday Work Pay / 休息日加班费",
+        "statutory_holiday_work_pay": "Statutory Holiday Pay / 法定休息日加班费",
+        "bonus": "Bonus / 奖金",
+        "other_earnings": "Other Earnings / 其他收入",
+    }
+    deduction_labels = {
+        "health_insurance": "Health Insurance / 健康保险",
+        "pension_insurance": "Pension Insurance / 养老保险",
+        "employment_insurance": "Employment Insurance / 雇用保险",
+        "income_tax": "Income Tax / 所得税",
+        "resident_tax": "Resident Tax / 住民税",
+        "cpf_employee": "CPF (Employee) / CPF (员工)",
+        "social_insurance_employee": "Social Insurance Emp. / 社保个人",
+        "housing_fund_employee": "Housing Fund Emp. / 公积金个人",
+        "individual_income_tax": "IIT / 个税",
+        "other_deduction": "Other Deduction / 其他扣除",
+    }
+    employer_labels = {
+        "employer_health_insurance": "Health Insurance (Employer) / 健康保险(公司)",
+        "employer_pension_insurance": "Pension Insurance (Employer) / 养老保险(公司)",
+        "employer_employment_insurance": "Employment Insurance (Employer) / 雇用保险(公司)",
+        "employer_workers_compensation": "Workers Compensation / 工伤保险",
+        "cpf_employer": "CPF (Employer) / CPF (雇主)",
+        "social_insurance_employer": "Social Insurance (Employer) / 社保公司",
+        "housing_fund_employer": "Housing Fund (Employer) / 公积金公司",
+        "employer_other_cost": "Other Employer Cost / 其他雇主成本",
+    }
+
+    def _money_cell(label, value):
+        return f"<tr><td style='padding:6px 12px;border-bottom:1px solid #d8dee9'>{label}</td><td style='padding:6px 12px;text-align:right;border-bottom:1px solid #d8dee9'>{currency} {value:,.2f}</td></tr>"
+
+    def _section_rows(data, fields, labels):
+        rows = []
+        for field in fields:
+            val = money(data.get(field, 0))
+            if val != 0 or field in ("base_salary",):
+                label = labels.get(field, field)
+                rows.append(_money_cell(label, val))
+        return "\n".join(rows) if rows else '<tr><td colspan="2" style="padding:6px 12px;color:#65758b">—</td></tr>'
+
+    earnings_section = _section_rows(earnings, EARNING_FIELDS, earning_labels)
+    deductions_section = _section_rows(deductions, DEDUCTION_FIELDS, deduction_labels)
+    employer_section = _section_rows(employer_costs, EMPLOYER_COST_FIELDS, employer_labels)
+
+    return f"""<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payslip - {name}</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; max-width: 780px; margin: 0 auto; padding: 24px 18px; color: #1f2937; background: #f6f8fb; }}
+  .card {{ background: #fff; border: 1px solid #d8dee9; border-radius: 14px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }}
+  h1 {{ color: #14213d; border-bottom: 2px solid #14213d; padding-bottom: 10px; margin: 0 0 16px; font-size: 20px; }}
+  .info {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }}
+  .info-item {{ font-size: 14px; }}
+  .info-item strong {{ display: inline-block; min-width: 140px; color: #475569; }}
+  table {{ width: 100%; border-collapse: collapse; margin: 0; }}
+  th {{ padding: 8px 12px; text-align: left; border-bottom: 2px solid #c8d1dc; background: #f8fafc; font-weight: 700; color: #475569; }}
+  .section-title {{ background: #eef4ff; font-weight: 700; padding: 10px 12px; margin: 0; border-radius: 8px 8px 0 0; border: 1px solid #d8dee9; border-bottom: none; font-size: 15px; color: #1e40af; }}
+  .section-table {{ border: 1px solid #d8dee9; border-radius: 0 0 8px 8px; overflow: hidden; margin-bottom: 16px; }}
+  .net-pay {{ font-size: 18px; color: #059669; text-align: center; padding: 14px; background: #f0fdf4; border-radius: 10px; margin: 16px 0; border: 2px solid #bbf7d0; font-weight: 700; }}
+  .employer-cost {{ font-size: 14px; color: #1e40af; text-align: center; padding: 10px; background: #eff6ff; border-radius: 10px; margin: 12px 0; }}
+  .footer {{ color: #65758b; font-size: 12px; text-align: center; margin-top: 24px; }}
+  .gross {{ font-weight: 700; border-top: 2px solid #14213d; background: #f8fafc; }}
+  @media print {{ body {{ background: #fff; }} .card {{ box-shadow: none; border: 1px solid #d8dee9; }} }}
+</style></head>
+<body>
+<div class="card">
+  <h1>TAC Salary Payslip / 工资单</h1>
+  <div class="info">
+    <div class="info-item"><strong>Employee / 员工:</strong> {name} ({emp_id})</div>
+    <div class="info-item"><strong>Payroll Month / 工资月份:</strong> {payroll_month}</div>
+    <div class="info-item"><strong>Entity / 法人:</strong> {entity_id}</div>
+    <div class="info-item"><strong>Country / 国家:</strong> {country_code}</div>
+    <div class="info-item"><strong>Department / 部门:</strong> {department}</div>
+    <div class="info-item"><strong>Team / 团队:</strong> {team_name}</div>
+    <div class="info-item"><strong>Employment Type / 雇佣类型:</strong> {employment_type}</div>
+    <div class="info-item"><strong>Currency / 币种:</strong> {currency}</div>
+  </div>
+
+  <div class="section-title">Earnings / 收入明细</div>
+  <div class="section-table"><table>{earnings_section}
+    <tr class="gross"><td style="padding:8px 12px;font-weight:700">Gross Pay / 应发工资</td><td style="padding:8px 12px;text-align:right;font-weight:700">{currency} {gross_pay:,.2f}</td></tr>
+  </table></div>
+
+  <div class="section-title">Deductions / 扣除明细</div>
+  <div class="section-table"><table>{deductions_section}
+    <tr class="gross"><td style="padding:8px 12px;font-weight:700">Total Deductions / 扣除合计</td><td style="padding:8px 12px;text-align:right;font-weight:700">{currency} {deduction_total:,.2f}</td></tr>
+  </table></div>
+
+  <div class="section-title">Employer Costs / 雇主成本</div>
+  <div class="section-table"><table>{employer_section}
+    <tr class="gross"><td style="padding:8px 12px;font-weight:700">Total Employer Cost / 雇主成本合计</td><td style="padding:8px 12px;text-align:right;font-weight:700">{currency} {employer_cost_total:,.2f}</td></tr>
+  </table></div>
+
+  <div class="net-pay">Net Pay / 实发工资: {currency} {net_pay:,.2f}</div>
+  <div style="color:#65758b;font-size:13px;text-align:center">Manual Adjustments / 手动调整: {currency} {manual_adjustments_total:,.2f}</div>
+</div>
+<div class="footer">Generated at {now_iso()} | TAC Salary System<br>Note: statutory calculations are manual/parameter-assisted until validated.</div>
+</body></html>"""
 
 
 def payslip_text(record: dict) -> str:
@@ -2155,6 +2321,211 @@ def send_notice_email(recipient: str, subject: str, body: str) -> tuple[bool, st
         return False, str(exc)
 
 
+def _tacaimsg_internal_api(endpoint: str, payload: dict) -> dict:
+    """Call tacaimsg internal API with token authentication."""
+    url = f"{TACAIMSG_INTERNAL_BASE_URL}{endpoint}"
+    data = json.dumps(payload).encode("utf-8")
+    request = Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "X-TACAI-Internal-Token": TACAIMSG_INTERNAL_TOKEN,
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, URLError, json.JSONDecodeError) as exc:
+        return {"code": 0, "error": str(exc)}
+
+
+def msg_center_available() -> bool:
+    """Check if Message Center integration is enabled and reachable."""
+    if not TAC_SALARY_MSG_CENTER_ENABLED:
+        return False
+    try:
+        result = _tacaimsg_internal_api("/api/internal/messages/send-batch", {"messages": []})
+        # Even if it returns error about empty messages, the service is reachable
+        return result.get("code") is not None
+    except Exception:
+        return False
+
+
+def resolve_employees_to_users(employee_ids: list[str]) -> dict[str, dict | None]:
+    """Resolve employee IDs to User Admin user accounts via tacaimsg internal API.
+
+    Falls back to reading User_admin users.json directly if API is unavailable.
+    Returns dict mapping employee_id -> user_summary or None.
+    """
+    # Try tacaimsg internal API first (it has the resolve endpoint)
+    result = _tacaimsg_internal_api("/api/internal/users/resolve-employees", {"employee_ids": employee_ids})
+    if result.get("code") == 200 and isinstance(result.get("data", {}).get("mapping"), dict):
+        return result["data"]["mapping"]
+
+    # Fallback: read User_admin users.json directly
+    user_admin_users_path = PROJECT_ROOT.parent / "TACAI-Core" / "User_admin" / "database" / "users.json"
+    mapping: dict[str, dict | None] = {}
+    try:
+        users = json.loads(user_admin_users_path.read_text(encoding="utf-8"))
+        if not isinstance(users, list):
+            users = []
+    except (FileNotFoundError, json.JSONDecodeError):
+        users = []
+
+    # Build lookup: linked_employee_id -> user
+    user_by_employee: dict[str, dict] = {}
+    for u in users:
+        linked = str(u.get("linked_employee_id", "")).strip()
+        if linked:
+            user_by_employee[linked] = u
+
+    for eid in employee_ids:
+        u = user_by_employee.get(str(eid).strip())
+        if u:
+            mapping[eid] = {
+                "user_id": u.get("user_id", ""),
+                "username": u.get("username", ""),
+                "display_name": u.get("display_name", ""),
+                "email": u.get("email", ""),
+                "entity_id": u.get("entity_id", ""),
+                "has_account": True,
+            }
+        else:
+            mapping[eid] = {"has_account": False}
+
+    return mapping
+
+
+def publish_salary_notifications_to_msg_center(
+    batch_id: str,
+    records: list[dict],
+    payslip_base_url: str = "",
+) -> dict:
+    """Publish salary notifications to Message Center for all employees with accounts.
+
+    Args:
+        batch_id: The payroll batch ID (used as biz_id).
+        records: List of payroll records (must have employee_snapshot with email, etc.).
+        payslip_base_url: Base URL for constructing payslip view links.
+
+    Returns:
+        Dict with sent_count, failed_count, skipped_no_account, results.
+    """
+    if not TAC_SALARY_MSG_CENTER_ENABLED:
+        return {"sent_count": 0, "failed_count": 0, "skipped_no_account": 0,
+                "total": len(records), "results": [], "message": "Message Center integration disabled"}
+
+    batch = batch_by_id(batch_id)
+    if not batch:
+        return {"sent_count": 0, "failed_count": 0, "skipped_no_account": 0,
+                "total": len(records), "results": [], "message": "Batch not found"}
+
+    payroll_month = batch.get("payroll_month", "")
+    entity_snap = batch.get("entity_snapshot", {})
+    entity_name = entity_snap.get("entity_name_local") or entity_snap.get("entity_name_en") or batch.get("entity_id", "")
+    currency = batch.get("currency", "")
+
+    # Collect all employee IDs
+    employee_ids = [str(r.get("employee_id", "")).strip() for r in records if r.get("employee_id")]
+
+    # Resolve to user accounts
+    user_mapping = resolve_employees_to_users(employee_ids)
+
+    # Build message payloads for employees with accounts
+    messages_payload = []
+    skipped_employee_ids = []
+
+    for record in records:
+        eid = str(record.get("employee_id", "")).strip()
+        user_info = user_mapping.get(eid)
+        if not user_info or not user_info.get("has_account"):
+            skipped_employee_ids.append(eid)
+            continue
+
+        employee = record.get("employee_snapshot", {})
+        employee_name = employee.get("employee_name", eid)
+        gross_pay = record.get("gross_pay", 0)
+        deduction_total = record.get("deduction_total", 0)
+        net_pay = record.get("net_pay", 0)
+
+        # Build payslip view URL
+        payslip_url = ""
+        if payslip_base_url:
+            payslip_url = f"{payslip_base_url}/payroll/sg?batch_id={batch_id}&employee_id={eid}"
+
+        # Build rich HTML content
+        content_html = f"""<div style="font-family: sans-serif; max-width: 600px;">
+<h3 style="color: #1a56db;">{payroll_month} 工资单通知</h3>
+<p>您的 {payroll_month} 工资单已生成，请查看以下汇总信息：</p>
+<table style="width:100%; border-collapse: collapse; margin: 12px 0; border: 1px solid #e5e7eb; border-radius: 8px;">
+<tr style="background: #f9fafb;"><td style="padding: 8px 12px; font-weight: 600; color: #6b7280;">工资月份</td><td style="padding: 8px 12px;">{payroll_month}</td></tr>
+<tr><td style="padding: 8px 12px; font-weight: 600; color: #6b7280;">法人实体</td><td style="padding: 8px 12px;">{entity_name}</td></tr>
+<tr style="background: #f9fafb;"><td style="padding: 8px 12px; font-weight: 600; color: #6b7280;">员工</td><td style="padding: 8px 12px;">{employee_name} ({eid})</td></tr>
+<tr><td style="padding: 8px 12px; font-weight: 600; color: #6b7280;">应发工资</td><td style="padding: 8px 12px; font-weight: 700;">{currency} {gross_pay:,.2f}</td></tr>
+<tr style="background: #f9fafb;"><td style="padding: 8px 12px; font-weight: 600; color: #6b7280;">扣除合计</td><td style="padding: 8px 12px;">{currency} {deduction_total:,.2f}</td></tr>
+<tr><td style="padding: 8px 12px; font-weight: 600; color: #6b7280; font-size: 1.1em;">实发工资</td><td style="padding: 8px 12px; font-weight: 700; font-size: 1.1em; color: #059669;">{currency} {net_pay:,.2f}</td></tr>
+</table>
+<p style="color: #6b7280; font-size: 0.9em;">此消息由 TACAI Payroll System 自动发送。如有疑问请联系HR。</p>
+</div>"""
+
+        action_buttons = []
+        if payslip_url:
+            action_buttons.append({"label": "查看工资单", "url": payslip_url})
+
+        messages_payload.append({
+            "recipient_user_id": user_info["user_id"],
+            "msg_type": "salary_notification",
+            "title": f"{payroll_month} 工资单 - {entity_name}",
+            "content": content_html,
+            "priority": "normal",
+            "biz_type": "salary_payslip",
+            "biz_id": batch_id,
+            "action_buttons": action_buttons,
+            "template_variables": {
+                "payroll_month": payroll_month,
+                "entity_name": entity_name,
+                "employee_id": eid,
+                "employee_name": employee_name,
+                "gross_pay": str(gross_pay),
+                "net_pay": str(net_pay),
+                "currency": currency,
+            },
+        })
+
+    if not messages_payload:
+        return {
+            "sent_count": 0, "failed_count": 0,
+            "skipped_no_account": len(skipped_employee_ids),
+            "total": len(records),
+            "results": [],
+            "message": "No employees with user accounts found",
+            "skipped_employee_ids": skipped_employee_ids,
+        }
+
+    # Call tacaimsg internal API
+    result = _tacaimsg_internal_api("/api/internal/messages/send-batch", {
+        "messages": messages_payload,
+        "sender_user_id": "SYSTEM",
+        "sender_name": "TACAI Payroll System",
+    })
+
+    if result.get("code") != 200:
+        return {
+            "sent_count": 0, "failed_count": len(messages_payload),
+            "skipped_no_account": len(skipped_employee_ids),
+            "total": len(records),
+            "results": [],
+            "message": f"Message Center API error: {result.get('error', 'unknown')}",
+            "skipped_employee_ids": skipped_employee_ids,
+        }
+
+    data = result.get("data", {})
+    data["skipped_employee_ids"] = skipped_employee_ids
+    return data
+
+
 def create_notices(batch_id: str, notice_type: str, payload: dict) -> dict:
     batch = batch_by_id(batch_id)
     if not batch:
@@ -2167,21 +2538,45 @@ def create_notices(batch_id: str, notice_type: str, payload: dict) -> dict:
     notices = read_json(PAYROLL_NOTICES_FILE)
     created = []
     actor = clean_text(payload.get("user") or "local_admin")
+
+    # Push to Message Center (parallel channel, before individual email sending)
+    payslip_base_url = f"http://{TACAI_PUBLIC_HOST}:8015"
+    msg_center_result = publish_salary_notifications_to_msg_center(
+        batch_id=batch_id,
+        records=records,
+        payslip_base_url=payslip_base_url,
+    )
+
+    # Use skipped_employee_ids to mark which employees didn't get msg center delivery
+    skipped_eids = set(msg_center_result.get("skipped_employee_ids", []))
+
     for record in records:
         employee = record.get("employee_snapshot", {})
+        eid = clean_text(record.get("employee_id"))
         notice_id = next_sequence_id("NOTICE", batch["payroll_month"], notices, "notice_id")
         subject = f"TAC Payroll {notice_type.title()} Notice {batch['payroll_month']}"
         body = payslip_text(record)
         recipient = clean_text(employee.get("email"))
         sent, message = send_notice_email(recipient, subject, body) if recipient else (False, "No employee email snapshot; manual send pending")
         status = "sent" if sent else "manual_send_pending"
+
+        # Determine channels used
+        channels = []
+        if smtp_configured():
+            channels.append("email")
+        else:
+            channels.append("manual_email")
+        msg_center_status = "no_account" if eid in skipped_eids else ("sent" if msg_center_result.get("sent_count", 0) > 0 else "failed")
+        if msg_center_status == "sent":
+            channels.append("message_center")
+
         notice = {
             "notice_id": notice_id,
             "batch_id": batch_id,
             "payroll_record_id": record.get("payroll_record_id"),
             "notice_type": f"{notice_type}_notice",
-            "channel": "system_email" if smtp_configured() else "manual_email",
-            "recipient_employee_id": record.get("employee_id"),
+            "channel": "+".join(channels) if channels else "none",
+            "recipient_employee_id": eid,
             "recipient_email_snapshot": recipient,
             "email_subject_snapshot": subject,
             "status": status,
@@ -2190,6 +2585,7 @@ def create_notices(batch_id: str, notice_type: str, payload: dict) -> dict:
             "sent_by": actor if sent else "",
             "sent_at": now_iso() if sent else "",
             "failure_reason": "" if sent else message,
+            "message_center_status": msg_center_status,
             "notes": clean_text(payload.get("notes")),
         }
         notices.append(notice)
@@ -2198,7 +2594,20 @@ def create_notices(batch_id: str, notice_type: str, payload: dict) -> dict:
     write_json(PAYROLL_NOTICES_FILE, notices)
     status_update = "first_notice_sent" if notice_type == "first" else "final_notice_sent"
     update_batch(batch_id, {"status": status_update})
-    return {"batch_id": batch_id, "notice_type": notice_type, "created_count": len(created), "notices": created}
+
+    # Include message center summary in response
+    return {
+        "batch_id": batch_id,
+        "notice_type": notice_type,
+        "created_count": len(created),
+        "notices": created,
+        "message_center": {
+            "sent_count": msg_center_result.get("sent_count", 0),
+            "failed_count": msg_center_result.get("failed_count", 0),
+            "skipped_no_account": msg_center_result.get("skipped_no_account", 0),
+            "message": msg_center_result.get("message", ""),
+        },
+    }
 
 
 def create_feedback(payload: dict) -> dict:
@@ -2521,15 +2930,33 @@ class SalaryHandler(BaseHTTPRequestHandler):
             return True
         if path.startswith("/api/v2/reports/"):
             report_type = path[len("/api/v2/reports/") :]
-            if report_type not in {"employer-cost", "net-pay"}:
+            if report_type not in {"employer-cost", "net-pay", "payroll-records"}:
                 self.send_error_json(HTTPStatus.NOT_FOUND, "Report not found")
                 return True
             allowed, user = self.authorize(permission_group("reports"))
             if not allowed:
                 return True
-            report = payroll_report(report_type, query_params)
-            append_audit("salary", f"report-{report_type}", "payroll_report_viewed", actor_from_user(user), None, {"report_type": report_type, "row_count": len(report["rows"]), "query": query_params}, submodule="report")
+            if report_type == "payroll-records":
+                report = payroll_records_report(query_params)
+            else:
+                report = payroll_report(report_type, query_params)
+            append_audit("salary", f"report-{report_type}", "payroll_report_viewed", actor_from_user(user), None, {"report_type": report_type, "row_count": len(report.get("rows", report.get("records", []))), "query": query_params}, submodule="report")
             self.send_json(report)
+            return True
+        if path.startswith("/api/v2/payslips/") and path.endswith("/html"):
+            payslip_id = unquote(path[len("/api/v2/payslips/") : -len("/html")])
+            doc = payslip_by_id(payslip_id)
+            if not doc:
+                self.send_error_json(HTTPStatus.NOT_FOUND, "Payslip not found")
+                return True
+            record_id = doc.get("payroll_record_id", "")
+            found = find_payroll_record(record_id)
+            if not found:
+                self.send_error_json(HTTPStatus.NOT_FOUND, "Payroll record not found for this payslip")
+                return True
+            html = payslip_html(found[3])
+            append_audit("salary", payslip_id, "payslip_html_previewed", actor_from_user(user), None, {"payslip_id": payslip_id}, submodule="payslip", batch_id=doc.get("batch_id"))
+            self.send_download(html.encode("utf-8"), "text/html; charset=utf-8")
             return True
         if path.startswith("/api/v2/payslips/") and path.endswith("/download"):
             payslip_id = unquote(path[len("/api/v2/payslips/") : -len("/download")])
@@ -2574,6 +3001,16 @@ class SalaryHandler(BaseHTTPRequestHandler):
                 if len(parts) == 5 and parts[4] == "notices":
                     self.send_json(notices_for_batch(batch_id))
                     return True
+        if path.startswith("/api/v2/records/") and path.endswith("/payslip-html"):
+            record_id = unquote(path[len("/api/v2/records/") : -len("/payslip-html")])
+            found = find_payroll_record(record_id)
+            if not found:
+                self.send_error_json(HTTPStatus.NOT_FOUND, "Payroll record not found")
+                return True
+            html = payslip_html(found[3])
+            append_audit("salary", record_id, "payslip_html_previewed", actor_from_user(user), None, {"payroll_record_id": record_id}, submodule="payslip", country_code=found[3].get("country_code"), entity_id=found[3].get("entity_id"), employee_id=found[3].get("employee_id"))
+            self.send_download(html.encode("utf-8"), "text/html; charset=utf-8")
+            return True
         if path.startswith("/api/v2/records/"):
             record_id = unquote(path[len("/api/v2/records/") :])
             found = find_payroll_record(record_id)
@@ -2733,6 +3170,10 @@ class SalaryHandler(BaseHTTPRequestHandler):
 
     def read_body_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or 0)
+        limit = MAX_POST_BYTES if self.path.startswith("/api/v2/batches/upload") else MAX_POST_BYTES_DEFAULT
+        if length > limit:
+            self.send_error_json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, f"Request body exceeds {limit // 1024 // 1024}MB limit")
+            raise ValueError("Request body too large")
         raw = self.rfile.read(length).decode("utf-8") if length else "{}"
         try:
             payload = json.loads(raw)

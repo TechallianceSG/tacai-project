@@ -1,0 +1,15 @@
+{
+  "app.title": "TACAI Pay SG Singapore Payroll",
+  "language": "English",
+  "nav.dashboard": "Dashboard",
+  "nav.master": "Salary Master",
+  "nav.batches": "Employee Payroll Release",
+  "nav.monthly_sheets": "Monthly Salary Calculation",
+  "nav.calendars": "Payroll Calendar",
+  "nav.release": "Payroll Release",
+  "nav.actuarial": "Salary Actuarial",
+  "nav.reports": "Reports",
+  "nav.parameters": "Parameters",
+  "nav.audit": "Audit",
+  "note": "Primary UI labels are currently embedded in backend/app.py. This file serves as an external reference."
+}

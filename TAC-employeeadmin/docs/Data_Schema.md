@@ -177,6 +177,10 @@ EmployeeAdmin proxies Master Data options through authenticated local endpoints:
     "account_holder": ""
   },
   "salary_type": "monthly",
+  "payroll_currency": "SGD",
+  "monthly_base_salary": "",
+  "daily_wage": "",
+  "hourly_wage": "",
   "salary_amount_yen": "",
   "transportation_allowance_yen": "",
   "bonus_eligible": false,
@@ -186,6 +190,34 @@ EmployeeAdmin proxies Master Data options through authenticated local endpoints:
   "notes": ""
 }
 ```
+
+**Salary type → required wage field mapping (data completeness):**
+
+| `salary_type` | Required field | Description |
+|---------------|---------------|-------------|
+| `monthly` | `payroll.monthly_base_salary` | Monthly base salary amount (non-negative integer) |
+| `daily` | `payroll.daily_wage` | Daily wage amount (non-negative integer) |
+| `hourly` | `payroll.hourly_wage` | Hourly wage amount (non-negative integer) |
+| `annual` | (none) | Annual salary is self-contained |
+
+If `salary_type` is `monthly`, `daily`, or `hourly`, the corresponding wage field is required for data completeness. The system validates that the required wage field is non-empty when the matching salary type is selected.
+
+**Supported currencies for `payroll.payroll_currency`:**
+
+| Code | Currency |
+|------|----------|
+| `SGD` | Singapore Dollar |
+| `USD` | US Dollar |
+| `CNY` | Chinese Yuan |
+| `INR` | Indian Rupee |
+| `TWD` | Taiwan Dollar |
+| `JPY` | Japanese Yen |
+
+`payroll.payroll_currency` is a dropdown selection. Values outside the supported list are rejected with a validation error.
+
+**Money field validation:**
+
+All payroll money fields (`monthly_base_salary`, `daily_wage`, `hourly_wage`, `salary_amount_yen`, `transportation_allowance_yen`) must be blank or a non-negative integer string. Floating-point values are not accepted.
 
 `payroll.bank.swift_code` is an optional SWIFT/BIC code for overseas salary or reimbursement payments. It can be entered by the employee during onboarding self-service or completed later by HR in the payroll edit screen. It is intentionally not part of the required JP/CN/SG employee master import fields.
 
@@ -597,7 +629,8 @@ Other implemented enums include employment status/type, gender, salary type, ban
 
 ## Money Handling
 
-- `payroll.salary_amount_yen` and `payroll.transportation_allowance_yen` are stored as blank or non-negative integer yen strings.
+- All payroll money fields (`payroll.monthly_base_salary`, `payroll.daily_wage`, `payroll.hourly_wage`, `payroll.salary_amount_yen`, `payroll.transportation_allowance_yen`) are stored as blank or non-negative integer strings.
+- Each money field represents the amount in the currency specified by `payroll.payroll_currency`.
 - Do not use floating point values for salary, allowance, or bonus amounts.
 
 ## Audit Logs

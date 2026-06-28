@@ -424,6 +424,66 @@ class TACTimesheetHandler(BaseHTTPRequestHandler):
         if path == "/health":
             self._send_text("OK")
             return
+        if path == "/api/payroll/attendance-summary":
+            user = self.require_user_admin_access()
+            if not user:
+                return
+            month = query.get("month", [""])[0].strip()
+            entity_id = query.get("entity_id", [""])[0].strip()
+            country_code = query.get("country_code", ["SG"])[0].strip().upper()
+            if not month:
+                self._send_json({"ok": False, "error": "month parameter required"}, 400)
+                return
+            entries = load_timesheet_entries()
+            # Filter by month and entity
+            month_entries = [e for e in entries if str(e.get("work_date", "")).startswith(month) and e.get("record_status") != "deleted"]
+            if entity_id:
+                month_entries = [e for e in month_entries if str(e.get("entity_id", "")).upper() == entity_id.upper()]
+            # Aggregate by employee using employee_id from record
+            employee_agg: dict[str, dict[str, Any]] = {}
+            for e in month_entries:
+                eid = str(e.get("employee_id") or e.get("employee_no") or "")
+                if not eid:
+                    continue
+                if eid not in employee_agg:
+                    employee_agg[eid] = {
+                        "employee_id": eid,
+                        "employee_number": str(e.get("employee_no", eid)),
+                        "employee_name": str(e.get("employee_name", "")),
+                        "entity_id": str(e.get("entity_id", "")),
+                        "total_work_days": 0,
+                        "total_work_hours": 0.0,
+                        "total_overtime_hours": 0.0,
+                        "total_late_night_hours": 0.0,
+                        "total_holiday_hours": 0.0,
+                        "total_paid_leave_days": 0.0,
+                        "total_unpaid_leave_days": 0.0,
+                        "absence_days": 0.0,
+                    }
+                agg = employee_agg[eid]
+                actual_min = float(e.get("actual_work_minutes", 0) or 0)
+                ot_min = float(e.get("overtime_minutes", 0) or 0)
+                night_min = float(e.get("night_work_minutes", 0) or 0)
+                holiday_min = float(e.get("holiday_work_minutes", 0) or 0)
+                if actual_min > 0:
+                    agg["total_work_days"] += 1
+                    agg["total_work_hours"] += round(actual_min / 60.0, 2)
+                if ot_min > 0:
+                    agg["total_overtime_hours"] += round(ot_min / 60.0, 2)
+                if night_min > 0:
+                    agg["total_late_night_hours"] += round(night_min / 60.0, 2)
+                if holiday_min > 0:
+                    agg["total_holiday_hours"] += round(holiday_min / 60.0, 2)
+                # Check attendance status for leave/absence
+                att_status = str(e.get("attendance_status", "")).lower()
+                if att_status in ("paid_leave", "paid leave", "有給休暇"):
+                    agg["total_paid_leave_days"] += 1
+                elif att_status in ("unpaid_leave", "unpaid leave", "無給休暇"):
+                    agg["total_unpaid_leave_days"] += 1
+                elif att_status in ("absence", "absent", "欠勤"):
+                    agg["absence_days"] += 1
+            self._send_json({"ok": True, "month": month, "country_code": country_code, "entity_id": entity_id, "employees": list(employee_agg.values())})
+            return
         user = self.require_user_admin_access()
         if not user:
             return
@@ -844,6 +904,14 @@ class TACTimesheetHandler(BaseHTTPRequestHandler):
         payload = text.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_json(self, data: dict[str, Any], status: int = 200) -> None:
+        payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)

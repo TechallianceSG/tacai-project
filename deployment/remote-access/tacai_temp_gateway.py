@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -21,67 +22,95 @@ ROUTES = [
     ("/expense", "127.0.0.1", 8003, "/expense"),
     ("/payroll", "127.0.0.1", 8001, "/payroll"),
     ("/tacpayroll", "127.0.0.1", 8015, "/tacpayroll"),
+    ("/tacaipaysg", "127.0.0.1", 8016, "/tacaipaysg"),
+    ("/tacaipayjp", "127.0.0.1", 8017, "/tacaipayjp"),
     ("/interviewready", "127.0.0.1", 8000, "/interviewready"),
     ("/vendorpayables", "127.0.0.1", 8008, "/vendorpayables"),
     ("/billing", "127.0.0.1", 8009, "/billing"),
     ("/customerbilling", "127.0.0.1", 8009, "/customerbilling"),
     ("/fileadmin", "127.0.0.1", 8011, "/fileadmin"),
+    ("/tacaimsg", "127.0.0.1", 8012, "/tacaimsg"),
     ("/portal", "127.0.0.1", 8005, "/portal"),
 ]
 DEFAULT_TARGET = ("127.0.0.1", 8005, "/portal")
 
-URL_REWRITES = [
+BASE_URL_REWRITES = [
     ("https://ai.tactokyo.com", "/portal"),
     ("http://127.0.0.1:8005", "/portal"),
     ("http://localhost:8005", "/portal"),
-    ("http://192.168.0.27:8005", "/portal"),
     ("https://useradmin.tactokyo.com", "/useradmin"),
     ("http://127.0.0.1:8006", "/useradmin"),
     ("http://localhost:8006", "/useradmin"),
-    ("http://192.168.0.27:8006", "/useradmin"),
     ("https://interview.tactokyo.com", "/interviewready"),
     ("http://127.0.0.1:8000", "/interviewready"),
     ("http://localhost:8000", "/interviewready"),
-    ("http://192.168.0.27:8000", "/interviewready"),
     ("https://payroll.tactokyo.com", "/payroll"),
     ("http://127.0.0.1:8001", "/payroll"),
     ("http://localhost:8001", "/payroll"),
-    ("http://192.168.0.27:8001", "/payroll"),
     ("https://tacpayroll.tactokyo.com", "/tacpayroll"),
     ("http://127.0.0.1:8015", "/tacpayroll"),
     ("http://localhost:8015", "/tacpayroll"),
-    ("http://192.168.0.27:8015", "/tacpayroll"),
+    ("https://tacaipaysg.tactokyo.com", "/tacaipaysg"),
+    ("http://127.0.0.1:8016", "/tacaipaysg"),
+    ("http://localhost:8016", "/tacaipaysg"),
+    ("https://tacaipayjp.tactokyo.com", "/tacaipayjp"),
+    ("http://127.0.0.1:8017", "/tacaipayjp"),
+    ("http://localhost:8017", "/tacaipayjp"),
     ("https://employee.tactokyo.com", "/employeeadmin"),
     ("http://127.0.0.1:8004", "/employeeadmin"),
     ("http://localhost:8004", "/employeeadmin"),
-    ("http://192.168.0.27:8004", "/employeeadmin"),
     ("https://masterdata.tactokyo.com", "/masterdata"),
     ("http://127.0.0.1:8007", "/masterdata"),
     ("http://localhost:8007", "/masterdata"),
-    ("http://192.168.0.27:8007", "/masterdata"),
     ("https://timesheet.tactokyo.com", "/timesheet"),
     ("http://127.0.0.1:8002", "/timesheet"),
     ("http://localhost:8002", "/timesheet"),
-    ("http://192.168.0.27:8002", "/timesheet"),
     ("https://expense.tactokyo.com", "/expense"),
     ("http://127.0.0.1:8003", "/expense"),
     ("http://localhost:8003", "/expense"),
-    ("http://192.168.0.27:8003", "/expense"),
     ("https://vendor.tactokyo.com", "/vendorpayables"),
     ("https://vendorpayables.tactokyo.com", "/vendorpayables"),
     ("http://127.0.0.1:8008", "/vendorpayables"),
     ("http://localhost:8008", "/vendorpayables"),
-    ("http://192.168.0.27:8008", "/vendorpayables"),
     ("https://billing.tactokyo.com", "/billing"),
     ("https://customerbilling.tactokyo.com", "/billing"),
     ("http://127.0.0.1:8009", "/billing"),
     ("http://localhost:8009", "/billing"),
-    ("http://192.168.0.27:8009", "/billing"),
     ("https://fileadmin.tactokyo.com", "/fileadmin"),
     ("http://127.0.0.1:8011", "/fileadmin"),
     ("http://localhost:8011", "/fileadmin"),
-    ("http://192.168.0.27:8011", "/fileadmin"),
+    ("http://127.0.0.1:8012", "/tacaimsg"),
+    ("http://localhost:8012", "/tacaimsg"),
 ]
+
+LAN_PORT_PREFIXES = {
+    8000: "/interviewready",
+    8001: "/payroll",
+    8002: "/timesheet",
+    8003: "/expense",
+    8004: "/employeeadmin",
+    8005: "/portal",
+    8006: "/useradmin",
+    8007: "/masterdata",
+    8008: "/vendorpayables",
+    8009: "/billing",
+    8011: "/fileadmin",
+    8012: "/tacaimsg",
+    8015: "/tacpayroll",
+    8016: "/tacaipaysg",
+    8017: "/tacaipayjp",
+}
+
+URL_REWRITES = list(BASE_URL_REWRITES)
+
+
+def build_url_rewrites() -> list[tuple[str, str]]:
+    rewrites = list(BASE_URL_REWRITES)
+    lan_ip = (os.environ.get("TACAI_PUBLIC_HOST") or "").strip()
+    if lan_ip:
+        for port, prefix in LAN_PORT_PREFIXES.items():
+            rewrites.append((f"http://{lan_ip}:{port}", prefix))
+    return rewrites
 
 
 def pct_encode_url(value: str) -> str:
@@ -145,6 +174,8 @@ def rewrite_text(text: str, public_prefix: str) -> str:
         ("https%3A%2F%2Ffileadmin.tactokyo.com", "%2Ffileadmin"),
         ("http%3A%2F%2F127.0.0.1%3A8011", "%2Ffileadmin"),
         ("http%3A%2F%2Flocalhost%3A8011", "%2Ffileadmin"),
+        ("http%3A%2F%2F127.0.0.1%3A8012", "%2Ftacaimsg"),
+        ("http%3A%2F%2Flocalhost%3A8012", "%2Ftacaimsg"),
     ]
     encoded_rewrites.extend((pct_encode_url(old), pct_encode_url(new)) for old, new in URL_REWRITES)
     for old, new in encoded_rewrites:
@@ -167,11 +198,14 @@ def rewrite_text(text: str, public_prefix: str) -> str:
         "/expense",
         "/payroll",
         "/tacpayroll",
+        "/tacaipaysg",
+        "/tacaipayjp",
         "/interviewready",
         "/vendorpayables",
         "/billing",
         "/customerbilling",
         "/fileadmin",
+        "/tacaimsg",
     )
     for prefix in known_prefixes:
         if prefix == public_prefix:
@@ -223,6 +257,8 @@ def rewrite_location(value: str, public_prefix: str) -> str:
         ("https%3A%2F%2Ffileadmin.tactokyo.com", "%2Ffileadmin"),
         ("http%3A%2F%2F127.0.0.1%3A8011", "%2Ffileadmin"),
         ("http%3A%2F%2Flocalhost%3A8011", "%2Ffileadmin"),
+        ("http%3A%2F%2F127.0.0.1%3A8012", "%2Ftacaimsg"),
+        ("http%3A%2F%2Flocalhost%3A8012", "%2Ftacaimsg"),
     ]
     encoded_rewrites.extend((pct_encode_url(old), pct_encode_url(new)) for old, new in URL_REWRITES)
     for old, new in encoded_rewrites:
@@ -237,11 +273,14 @@ def rewrite_location(value: str, public_prefix: str) -> str:
         "/expense",
         "/payroll",
         "/tacpayroll",
+        "/tacaipaysg",
+        "/tacaipayjp",
         "/interviewready",
         "/vendorpayables",
         "/billing",
         "/customerbilling",
         "/fileadmin",
+        "/tacaimsg",
     )
     if value.startswith("/") and not value.startswith(known_prefixes):
         return public_prefix + value
@@ -349,13 +388,15 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    global URL_REWRITES
+    URL_REWRITES = build_url_rewrites()
     parser = argparse.ArgumentParser(description="Temporary TACAI public-test gateway")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8010)
     args = parser.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), GatewayHandler)
     print(f"TACAI temporary gateway listening on http://{args.host}:{args.port}")
-    print("Routes: /portal -> 8005, /useradmin -> 8006, /timesheet -> 8002, /expense -> 8003")
+    print("Routes include /portal, /useradmin, /tacaipaysg, /tacaipayjp, /tacpayroll, /timesheet, /expense")
     server.serve_forever()
 
 
