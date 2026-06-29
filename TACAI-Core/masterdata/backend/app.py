@@ -31,6 +31,21 @@ from typing import Any, Optional
 from urllib.error import URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATABASE_DIR = ROOT_DIR / "database"
@@ -51,7 +66,23 @@ MACOS_VISION_OCR_SCRIPT = ROOT_DIR / "backend" / "macos_vision_ocr.swift"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8012, 8016, 8018}
+
+
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None, default_portal_url: str | None = None) -> str:
+    from urllib.parse import urlparse as _urlparse
+    portal = default_portal_url or PORTAL_BASE_URL
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(portal)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return portal
 
 
 def local_base_url(port: int) -> str:
@@ -63,9 +94,9 @@ def internal_base_url(port: int) -> str:
 
 
 APP_BASE_URL = local_base_url(8007)
-PORTAL_BASE_URL = (os.environ.get("PORTAL_PUBLIC_BASE_URL", local_base_url(8005)).strip() or local_base_url(8005)).rstrip("/")
-USER_ADMIN_BASE_URL = local_base_url(8006)
-USER_ADMIN_INTERNAL_BASE_URL = internal_base_url(8006)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL", os.environ.get("PORTAL_PUBLIC_BASE_URL", local_base_url(8005))).strip() or local_base_url(8005)).rstrip("/")
+USER_ADMIN_BASE_URL = (os.environ.get("USER_ADMIN_PUBLIC_BASE_URL", local_base_url(8006)).strip() or local_base_url(8006)).rstrip("/")
+USER_ADMIN_INTERNAL_BASE_URL = (os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip() or internal_base_url(8006)).rstrip("/")
 USER_ADMIN_SESSION_COOKIE = "tacai_session_id"
 FLASH_COOKIE = "tacai_flash"
 MODULE_NAME = "masterdata"
@@ -176,15 +207,23 @@ def selected(current: Any, value: str) -> str:
     return " selected" if str(current) == str(value) else ""
 
 
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
         return []
-    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
-
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError(f"{path.name} must contain a JSON array.")
+    return [item for item in data if isinstance(item, dict)]
 
 def save_json_array(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1775,7 +1814,7 @@ def render_masterdata_version_history(record_type: str, record_id: str, current_
 """
 
 
-def render_page(title: str, body: str, lang: str, messages: dict[str, str], current_user: Optional[dict[str, Any]] = None) -> bytes:
+def render_page(title: str, body: str, lang: str, messages: dict[str, str], current_user: Optional[dict[str, Any]] = None, request_host: Optional[str] = None) -> bytes:
     nav_items = [
         ("/dashboard", t(messages, "nav.dashboard")),
         ("/entities", t(messages, "nav.entities")),
@@ -1789,7 +1828,7 @@ def render_page(title: str, body: str, lang: str, messages: dict[str, str], curr
         nav_items.append(("/master-data/system-parameters", t(messages, "nav.system_parameters", "System Parameters")))
     nav_html = "".join(f'<a href="{h(url_with_lang(path, lang))}">{h(label)}</a>' for path, label in nav_items)
     portal_html = (
-        f'<a class="portal-link" href="{h(PORTAL_BASE_URL)}" title="{h(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}" '
+        f'<a class="portal-link" href="{h(resolve_portal_url(request_host))}" title="{h(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}" '
         f'aria-label="{h(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}"><span class="portal-icon" aria-hidden="true">⌂</span>{h(t(messages, "nav.portal", "Back to Portal"))}</a>'
     )
     user_html = ""
@@ -1927,6 +1966,11 @@ def hmac_compare(left: str, right: str) -> bool:
 class MasterDataHandler(BaseHTTPRequestHandler):
     server_version = "TACAIMasterData/0.1"
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def flash_message_payload(self) -> dict[str, str]:
         cookie = SimpleCookie(self.headers.get("Cookie", ""))
         morsel = cookie.get(FLASH_COOKIE)
@@ -1952,7 +1996,7 @@ class MasterDataHandler(BaseHTTPRequestHandler):
         flash = self.flash_message_payload()
         if flash:
             body = render_message(messages, flash.get("message", ""), flash.get("record", ""), flash.get("time", "")) + body
-        payload = render_page(title, body, lang, messages, current_user)
+        payload = render_page(title, body, lang, messages, current_user, self.request_host)
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         if flash:

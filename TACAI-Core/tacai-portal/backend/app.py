@@ -30,7 +30,7 @@ MODULE_NAME = "tacai-portal"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8012, 8016, 8017, 8018}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8012, 8016, 8018}
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 
 
@@ -51,7 +51,7 @@ def base_url_host(value: str) -> str:
     return (parsed.hostname or "").lower()
 
 
-PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL") or "").strip().rstrip("/") or public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
 TACAIMSG_BASE_URL = public_base_url("TACAIMSG_PUBLIC_BASE_URL", 8012)
@@ -326,9 +326,13 @@ def with_lang(path_or_url: str, lang: str) -> str:
     return parsed._replace(query=urlencode(query, doseq=True)).geturl()
 
 
-def public_local_url(url: str) -> str:
+def public_local_url(url: str, request_host: str | None = None) -> str:
     parsed = urlparse(url)
     if parsed.scheme in {"http", "https"} and parsed.hostname in {"127.0.0.1", "localhost"} and parsed.port in LOCAL_ALLOWED_PORTS:
+        # When the user accesses via 127.0.0.1 / localhost, keep module links
+        # on 127.0.0.1 so session cookies (host-scoped) continue to work.
+        if request_host and request_host in {"127.0.0.1", "localhost"}:
+            return parsed._replace(netloc=f"127.0.0.1:{parsed.port}").geturl()
         env_by_port = {
             8000: "INTERVIEW_READY_PUBLIC_BASE_URL",
             8001: "PAYROLL_PUBLIC_BASE_URL",
@@ -340,7 +344,6 @@ def public_local_url(url: str) -> str:
             8007: "MASTERDATA_PUBLIC_BASE_URL",
             8012: "TACAIMSG_PUBLIC_BASE_URL",
             8016: "TACAIPAYSG_PUBLIC_BASE_URL",
-            8017: "TACAIPAYJP_PUBLIC_BASE_URL",
             8018: "SELFSERVICE_PUBLIC_BASE_URL",
         }
         env_name = env_by_port.get(parsed.port)
@@ -352,18 +355,39 @@ def public_local_url(url: str) -> str:
     return url
 
 
-def portal_url(path: str, lang: str) -> str:
-    return f"{PORTAL_BASE_URL}{with_lang(path, lang)}"
+def _resolve_host(request_host: str | None = None) -> str:
+    """Return the effective host for public-facing URLs.
+
+    When the user accesses via 127.0.0.1 / localhost, keep all links on
+    127.0.0.1 so session cookies (host-scoped) continue to work.
+    Otherwise use the configured TACAI_PUBLIC_HOST (LAN IP) for cross-device
+    access.
+    """
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
 
 
-def user_admin_login_url(lang: str) -> str:
-    next_url = portal_url("/dashboard", lang)
-    return f"{USER_ADMIN_BASE_URL}/login?next={quote(next_url, safe='')}"
+def portal_url(path: str, lang: str, request_host: str | None = None) -> str:
+    host = _resolve_host(request_host)
+    port = urlparse(PORTAL_BASE_URL).port or 8005
+    return f"http://{host}:{port}{with_lang(path, lang)}"
 
 
-def user_admin_logout_url(lang: str) -> str:
-    next_url = portal_url("/login", lang)
-    return f"{USER_ADMIN_BASE_URL}/logout?next={quote(next_url, safe='')}"
+def user_admin_login_url(lang: str, request_host: str | None = None) -> str:
+    host = _resolve_host(request_host)
+    port = urlparse(USER_ADMIN_BASE_URL).port or 8006
+    base = f"http://{host}:{port}"
+    next_url = portal_url("/dashboard", lang, request_host)
+    return f"{base}/login?next={quote(next_url, safe='')}"
+
+
+def user_admin_logout_url(lang: str, request_host: str | None = None) -> str:
+    host = _resolve_host(request_host)
+    port = urlparse(USER_ADMIN_BASE_URL).port or 8006
+    base = f"http://{host}:{port}"
+    next_url = portal_url("/login", lang, request_host)
+    return f"{base}/logout?next={quote(next_url, safe='')}"
 
 
 def language_switcher(current_path: str, lang: str) -> str:
@@ -385,7 +409,7 @@ def language_switcher(current_path: str, lang: str) -> str:
     """
 
 
-def load_modules() -> list[dict]:
+def load_modules(request_host: str | None = None) -> list[dict]:
     modules = read_json(MODULES_FILE, DEFAULT_MODULES)
     if not isinstance(modules, list):
         return DEFAULT_MODULES
@@ -400,7 +424,7 @@ def load_modules() -> list[dict]:
                 "labels": item.get("labels", {}) if isinstance(item.get("labels", {}), dict) else {},
                 "description": str(item.get("description", "")),
                 "descriptions": item.get("descriptions", {}) if isinstance(item.get("descriptions", {}), dict) else {},
-                "url": public_local_url(str(item.get("url", "#"))),
+                "url": public_local_url(str(item.get("url", "#")), request_host),
                 "status": str(item.get("status", "")),
                 "statuses": item.get("statuses", {}) if isinstance(item.get("statuses", {}), dict) else {},
                 "required_permission": str(item.get("required_permission", "")),
@@ -410,12 +434,12 @@ def load_modules() -> list[dict]:
     return normalized or DEFAULT_MODULES
 
 
-def visible_modules_for(user: dict) -> list[dict]:
+def visible_modules_for(user: dict, request_host: str | None = None) -> list[dict]:
     permissions = set(user.get("permissions", []))
     roles = set(user.get("roles", []))
     is_system_admin = "system_admin" in roles
     visible = []
-    for item in load_modules():
+    for item in load_modules(request_host):
         required_permission = item.get("required_permission", "")
         if not required_permission or is_system_admin or required_permission in permissions:
             visible.append(item)
@@ -486,7 +510,7 @@ def render_user_admin_unavailable(lang: str, current_path: str) -> str:
     <p class="muted">{html.escape(translate(lang, 'unavailable.subtitle'))}</p>
     <p class="hint">{html.escape(translate(lang, 'unavailable.hint'))}</p>
     <pre>cd /Users/terencewang/Documents/claude-project/TACAI-Core/User_admin
-python3 backend/app.py --host 127.0.0.1 --port 8006</pre>
+python3 backend/app.py --host 127.0.0.1 --port ${AUTH_PORT:-8006}</pre>
     <p><a class="button-link" href="{html.escape(with_lang('/', lang))}">{html.escape(translate(lang, 'unavailable.retry'))}</a></p>
   </section>
 </main>
@@ -594,7 +618,7 @@ def validate_user_admin_session(session_id: str) -> dict | None:
     return None
 
 
-def render_login(lang: str, current_path: str, error: str = "") -> str:
+def render_login(lang: str, current_path: str, error: str = "", request_host: str | None = None) -> str:
     error_html = f'<div class="alert">{html.escape(error)}</div>' if error else ""
     body = f"""
 <main class="login-page">
@@ -605,7 +629,7 @@ def render_login(lang: str, current_path: str, error: str = "") -> str:
     <p class="muted">{html.escape(translate(lang, 'login.subtitle'))}</p>
     {error_html}
     <p class="muted">{html.escape(translate(lang, 'login.auth_note'))}</p>
-    <p><a class="button-link" href="{html.escape(user_admin_login_url(lang))}">{html.escape(translate(lang, 'login.button'))}</a></p>
+    <p><a class="button-link" href="{html.escape(user_admin_login_url(lang, request_host))}">{html.escape(translate(lang, 'login.button'))}</a></p>
     <p class="hint">{html.escape(translate(lang, 'login.hint'))}</p>
   </section>
 </main>
@@ -628,10 +652,10 @@ def current_user_chip(user: dict, lang: str) -> str:
     '''
 
 
-def render_dashboard(user: dict, lang: str, current_path: str) -> str:
+def render_dashboard(user: dict, lang: str, current_path: str, request_host: str | None = None) -> str:
     user_id = str(user.get("user_id", ""))
     unread_count = get_msg_center_unread_count(user_id)
-    modules = visible_modules_for(user)
+    modules = visible_modules_for(user, request_host)
     cards = "\n".join(
         f"""
       <a class="module-card" href="{html.escape(with_lang(item['url'], lang))}">
@@ -673,7 +697,7 @@ def render_dashboard(user: dict, lang: str, current_path: str) -> str:
         {entity_html}
         {language_switcher(current_path, lang)}
         {current_user_chip(user, lang)}
-        <form method="post" action="{user_admin_logout_url(lang)}">
+        <form method="post" action="{user_admin_logout_url(lang, request_host)}">
           <button class="secondary" type="submit">{html.escape(translate(lang, 'logout'))}</button>
         </form>
       </div>
@@ -691,8 +715,8 @@ def render_dashboard(user: dict, lang: str, current_path: str) -> str:
     return page_shell(translate(lang, "dashboard.title"), body, lang)
 
 
-def render_module_placeholder(user: dict, module_key: str, lang: str, current_path: str) -> str:
-    modules = visible_modules_for(user)
+def render_module_placeholder(user: dict, module_key: str, lang: str, current_path: str, request_host: str | None = None) -> str:
+    modules = visible_modules_for(user, request_host)
     item = next((nav_item for nav_item in modules if nav_item["module_key"] == module_key), None)
     title = module_label(item, lang) if item else module_key.replace("-", " ").replace("_", " ").title()
     entity_label = current_entity_label(user, lang)
@@ -719,7 +743,7 @@ def render_module_placeholder(user: dict, module_key: str, lang: str, current_pa
         {entity_html}
         {language_switcher(current_path, lang)}
         {current_user_chip(user, lang)}
-        <form method="post" action="{user_admin_logout_url(lang)}">
+        <form method="post" action="{user_admin_logout_url(lang, request_host)}">
           <button class="secondary" type="submit">{html.escape(translate(lang, 'logout'))}</button>
         </form>
       </div>
@@ -735,14 +759,14 @@ def render_module_placeholder(user: dict, module_key: str, lang: str, current_pa
     return page_shell(f"{title} - {translate(lang, 'future_module.title_suffix')}", body, lang)
 
 
-def render_entity_required(lang: str) -> str:
+def render_entity_required(lang: str, request_host: str | None = None) -> str:
     body = f"""
 <main class="login-page">
   <section class="login-card">
     <div class="brand-mark">TACAI</div>
     <h1>{html.escape(translate(lang, 'entity.required.title'))}</h1>
     <p class="muted">{html.escape(translate(lang, 'entity.required.text'))}</p>
-    <p><a class="button-link" href="{html.escape(user_admin_logout_url(lang))}">{html.escape(translate(lang, 'logout'))}</a></p>
+    <p><a class="button-link" href="{html.escape(user_admin_logout_url(lang, request_host))}">{html.escape(translate(lang, 'logout'))}</a></p>
   </section>
 </main>
 """
@@ -779,6 +803,12 @@ class PortalHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args) -> None:  # noqa: A002 - inherited API name
         return
+
+    @property
+    def request_host(self) -> str:
+        """Return the request Host header hostname (without port)."""
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
 
     def language_from_request(self, parsed) -> str:
         query = parse_qs(parsed.query, keep_blank_values=True)
@@ -825,15 +855,16 @@ class PortalHandler(BaseHTTPRequestHandler):
 
     def require_user(self, lang: str, current_path: str) -> dict | None:
         user = self.current_user()
+        rh = self.request_host
         if user and has_entity_context(user):
             return user
         if user and not has_entity_context(user):
-            self.send_html(render_entity_required(lang), HTTPStatus.FORBIDDEN, lang)
+            self.send_html(render_entity_required(lang, rh), HTTPStatus.FORBIDDEN, lang)
             return None
         if not user_admin_available():
             self.send_html(render_user_admin_unavailable(lang, current_path), HTTPStatus.SERVICE_UNAVAILABLE, lang)
             return None
-        self.redirect(user_admin_login_url(lang), lang)
+        self.redirect(user_admin_login_url(lang, rh), lang)
         return None
 
     def do_GET(self) -> None:  # noqa: N802 - inherited API name
@@ -859,7 +890,7 @@ class PortalHandler(BaseHTTPRequestHandler):
             if self.current_user():
                 self.redirect(with_lang("/dashboard", lang), lang)
             else:
-                self.send_html(render_login(lang, self.path), lang=lang)
+                self.send_html(render_login(lang, self.path, request_host=self.request_host), lang=lang)
             return
 
         if path == "/login":
@@ -868,20 +899,20 @@ class PortalHandler(BaseHTTPRequestHandler):
             elif not user_admin_available():
                 self.send_html(render_user_admin_unavailable(lang, self.path), HTTPStatus.SERVICE_UNAVAILABLE, lang)
             else:
-                self.redirect(user_admin_login_url(lang), lang)
+                self.redirect(user_admin_login_url(lang, self.request_host), lang)
             return
 
         if path == "/dashboard":
             user = self.require_user(lang, self.path)
             if user:
-                self.send_html(render_dashboard(user, lang, self.path), lang=lang)
+                self.send_html(render_dashboard(user, lang, self.path, self.request_host), lang=lang)
             return
 
         if path.startswith("/modules/"):
             user = self.require_user(lang, self.path)
             if user:
                 module_key = path.removeprefix("/modules/")
-                self.send_html(render_module_placeholder(user, module_key, lang, self.path), lang=lang)
+                self.send_html(render_module_placeholder(user, module_key, lang, self.path, self.request_host), lang=lang)
             return
 
         html_text, status = render_simple_page(lang, "not_found.title", "not_found.text", HTTPStatus.NOT_FOUND)
@@ -898,11 +929,11 @@ class PortalHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/login":
-            self.redirect(user_admin_login_url(lang), lang)
+            self.redirect(user_admin_login_url(lang, self.request_host), lang)
             return
 
         if path == "/logout":
-            self.redirect(user_admin_logout_url(lang), lang)
+            self.redirect(user_admin_logout_url(lang, self.request_host), lang)
             return
 
         html_text, status = render_simple_page(lang, "not_found.title", "not_found.text", HTTPStatus.NOT_FOUND)

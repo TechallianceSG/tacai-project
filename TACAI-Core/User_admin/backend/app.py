@@ -19,6 +19,21 @@ from pathlib import Path
 import secrets
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATABASE_DIR = ROOT_DIR / "database"
@@ -46,13 +61,13 @@ MAX_FAILED_LOGINS = 5
 USER_STATUSES = {"active", "inactive", "locked", "suspended"}
 USER_TYPES = {"employee", "admin", "external", "system"}
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
-USER_ADMIN_PUBLIC_BASE_URL = os.environ.get("USER_ADMIN_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8006").strip().rstrip("/")
-PORTAL_PUBLIC_BASE_URL = os.environ.get("PORTAL_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8005").strip().rstrip("/")
+USER_ADMIN_PUBLIC_BASE_URL = os.environ.get("USER_ADMIN_BASE_URL", os.environ.get("USER_ADMIN_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8006")).strip().rstrip("/")
+PORTAL_PUBLIC_BASE_URL = os.environ.get("PORTAL_BASE_URL", os.environ.get("PORTAL_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8005")).strip().rstrip("/")
 REMOTE_COOKIE_DOMAIN = os.environ.get("TACAI_COOKIE_DOMAIN", "").strip()
 REMOTE_COOKIE_SECURE = os.environ.get("TACAI_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes", "on"} or USER_ADMIN_PUBLIC_BASE_URL.startswith("https://")
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8011, 8015, 8016, 8017}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8011, 8012, 8015, 8016, 8018}
 
 
 def base_url_host(value: str) -> str:
@@ -377,15 +392,23 @@ def h(value: Any) -> str:
     return escape(str(value or ""), quote=True)
 
 
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
         return []
-    return [item for item in data if isinstance(item, dict)] if isinstance(data, list) else []
-
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError(f"{path.name} must contain a JSON array.")
+    return [item for item in data if isinstance(item, dict)]
 
 def save_json_array(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

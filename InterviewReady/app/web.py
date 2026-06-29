@@ -42,9 +42,24 @@ REPORT_INDEX_FILE = DATABASE_DIR / "report_index.json"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 APP_BASE_URL = f"http://{TACAI_PUBLIC_HOST}:8000"
-PORTAL_BASE_URL = (os.environ.get("PORTAL_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8005").strip() or f"http://{TACAI_PUBLIC_HOST}:8005").rstrip("/")
-USER_ADMIN_BASE_URL = f"http://{TACAI_PUBLIC_HOST}:8006"
-USER_ADMIN_INTERNAL_BASE_URL = f"http://{TACAI_INTERNAL_HOST}:8006"
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL", os.environ.get("PORTAL_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8005")).strip() or f"http://{TACAI_PUBLIC_HOST}:8005").rstrip("/")
+USER_ADMIN_BASE_URL = (os.environ.get("USER_ADMIN_PUBLIC_BASE_URL", f"http://{TACAI_PUBLIC_HOST}:8006").strip() or f"http://{TACAI_PUBLIC_HOST}:8006").rstrip("/")
+USER_ADMIN_INTERNAL_BASE_URL = (os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", f"http://{TACAI_INTERNAL_HOST}:8006").strip() or f"http://{TACAI_INTERNAL_HOST}:8006").rstrip("/")
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None) -> str:
+    from urllib.parse import urlparse as _urlparse
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(PORTAL_BASE_URL)
+        port = parsed.port or 8005
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return PORTAL_BASE_URL
+
+
 USER_ADMIN_SESSION_COOKIE = "tacai_session_id"
 MODULE_KEY = "interview_ready"
 REQUIRED_MODULE_PERMISSION = "interview_ready.access"
@@ -156,6 +171,11 @@ def safe_relative_report_path(path: str) -> str:
 class InterviewReadyHandler(BaseHTTPRequestHandler):
     server_version = "InterviewReadyWeb/0.4"
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def current_user(self) -> dict | None:
         cookie = SimpleCookie(self.headers.get("Cookie", ""))
         session_cookie = cookie.get(USER_ADMIN_SESSION_COOKIE)
@@ -201,18 +221,18 @@ class InterviewReadyHandler(BaseHTTPRequestHandler):
         if not user:
             return
         if parsed.path in {"/", "/dashboard"}:
-            self._send_html(self._page(user=user))
+            self._send_html(self._page(user=user, request_host=self.request_host))
             return
         if parsed.path == "/reports":
             if not self.require_permission(user, "interview_ready.report.view", "view InterviewReady reports"):
                 return
-            self._send_html(self._page(user=user, result_html=self._reports_html(), active_feature="reports"))
+            self._send_html(self._page(user=user, result_html=self._reports_html(), active_feature="reports", request_host=self.request_host))
             return
         if parsed.path == "/report":
             if not self.require_permission(user, "interview_ready.report.view", "view InterviewReady reports"):
                 return
             query = parse_qs(parsed.query)
-            self._send_html(self._page(user=user, result_html=self._report_detail_html(query.get("id", [""])[0], user=user), active_feature="reports"))
+            self._send_html(self._page(user=user, result_html=self._report_detail_html(query.get("id", [""])[0], user=user), active_feature="reports", request_host=self.request_host))
             return
         if parsed.path == "/report/export":
             if not self.require_permission(user, "interview_ready.report.export", "export InterviewReady reports"):
@@ -223,7 +243,7 @@ class InterviewReadyHandler(BaseHTTPRequestHandler):
         if parsed.path == "/audit":
             if not self.require_permission(user, "interview_ready.audit.view", "view InterviewReady audit logs"):
                 return
-            self._send_html(self._page(user=user, result_html=self._audit_html(), active_feature="audit"))
+            self._send_html(self._page(user=user, result_html=self._audit_html(), active_feature="audit", request_host=self.request_host))
             return
         self.send_error(404, "Not found")
 
@@ -316,10 +336,10 @@ class InterviewReadyHandler(BaseHTTPRequestHandler):
               </details>
             </section>
             """
-            self._send_html(self._page(result_html=result_html, active_feature=feature, user=user))
+            self._send_html(self._page(result_html=result_html, active_feature=feature, user=user, request_host=self.request_host))
         except Exception as exc:  # noqa: BLE001 - web UI should show operational errors.
             error_html = f"<section class='error sap-section'><h2>Error</h2><div class='message-strip error-strip'>{escape(str(exc))}</div></section>"
-            self._send_html(self._page(result_html=error_html, user=user), status=400)
+            self._send_html(self._page(result_html=error_html, user=user, request_host=self.request_host), status=400)
 
     def _parse_form(self) -> dict[str, str]:
         content_type = self.headers.get("Content-Type", "")
@@ -907,7 +927,7 @@ class InterviewReadyHandler(BaseHTTPRequestHandler):
         </div>
         """
 
-    def _page(self, result_html: str = "", active_feature: str = "jd-insight", user: dict | None = None) -> str:
+    def _page(self, result_html: str = "", active_feature: str = "jd-insight", user: dict | None = None, request_host: str | None = None) -> str:
         user_html = self._current_user_html(user)
         dashboard_cards = self._dashboard_cards_html()
         audit_link = "<a href='/audit'>Audit Trail</a>" if user and has_permission(user, "interview_ready.audit.view") else ""
@@ -932,7 +952,7 @@ class InterviewReadyHandler(BaseHTTPRequestHandler):
       <a href='#form-japan-risk' onclick="showFeature('japan-risk')">Japan Risk</a>
       <a href='/reports'>Report History</a>
       {audit_link}
-      <a class='portal-link' href='{escape(PORTAL_BASE_URL)}' title='Return to TACAI Portal' aria-label='Return to TACAI Portal'><span aria-hidden='true'>⌂</span> Back to Portal</a>
+      <a class='portal-link' href='{escape(resolve_portal_url(request_host))}' title='Return to TACAI Portal' aria-label='Return to TACAI Portal'><span aria-hidden='true'>⌂</span> Back to Portal</a>
     </nav>
   </aside>
   <main class='content'>

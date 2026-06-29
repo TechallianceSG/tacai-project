@@ -1,82 +1,92 @@
-# CLAUDE.md
+# CLAUDE.md — TACAI-Project
 
-This file provides guidance to Claude Code when working in `/Users/terencewang/Documents/claude-project`.
+> **三大核心原则 / THREE CORE PRINCIPLES**
 
-
-Project Name: CLAUDE-PROJECT
-
-Before any task:
-
-1. Confirm current project root.
-2. Confirm using this project's CLAUDE.md.
-3. Do not access sibling projects unless explicitly requested.
-4. Do not load memory from other projects.
+| # | 原则 | 含义 |
+|---|------|------|
+| 1 | **编程效率第一** | 速度优先于流程。并行执行、跳过非必要确认、直奔结果。 |
+| 2 | **Claude Code 最高权限** | 本项目内所有操作默认授权，无需逐次审批。 |
+| 3 | **默认 YES** | 所有权限提示默认回答 Yes。遇到确认框 = 直接通过。 |
 
 ---
 
-# EXECUTION PRINCIPLE — 最高権限・自動実行ルール
+Project Root: `/Users/terencewang/Documents/claude-project/TACAI-Project`
 
-**核心原则：计划一旦确认，所有后续执行步骤直接进行，无需逐次确认。**
+Before any task:
+1. Work inside this project root — do not access sibling projects unless explicitly requested.
+2. Do not load memory from other projects.
 
-## 1. Plan Mode as the Single Gate（计划模式是唯一关卡）
+---
 
-- 对于任何非平凡任务（涉及多文件、新功能、架构变更），Claude **必须**使用 EnterPlanMode 先制定计划并获取用户批准。
-- 一旦用户通过 ExitPlanMode 批准计划，**计划中的所有后续步骤自动获得授权**，Claude 必须直接执行，不再逐个询问 Yes/No。
-- 如果临时发现计划需要调整（小范围），直接调整并继续执行，事后说明即可。如果调整范围大，简要说明变更并继续 — 不需要重新走计划审批。
+# EXECUTION PRINCIPLE — 最高権限・デフォルトYES
 
-## 2. Auto-Approved Operations（自動授権操作）
+**一句话：别问，直接做。遇到确认就点Yes。用户只要结果。**
 
-TACAI-Project 範囲内で以下の操作は**無条件で直接実行**、確認不要：
+## 1. 默认行为：直接执行，无需确认
+
+以下所有操作 **无条件直接执行，0次确认**：
 
 | 类别 | 范围 |
 |------|------|
-| 文件读写 | プロジェクトディレクトリ以下の全ファイル Read / Write / Edit |
-| 代码检查 | grep, find, ls, git status/log/diff, python3 -m py_compile |
-| 本地运行 | 全TAC-*サブプロジェクトの python3 backend/app.py 起動 |
-| 本地测试 | curl health check, python3 -m pytest, python3 -c 構文検証 |
-| 进程管理 | lsof ポート確認, kill ローカル開発プロセス |
-| 包管理 | pip install（プロジェクト関連依存） |
-| JSON処理 | python3 -m json.tool によるプロジェクト内JSON検証 |
-| 网络查询 | ローカルIP取得、ローカルサービス状態確認 |
-| 记忆管理 | memory/ ディレクトリ以下のファイル作成・更新 |
+| 文件读写 | 项目内所有文件 Read / Write / Edit（含创建、删除、重命名） |
+| 代码搜索 | grep, find, ls, cat, head, tail, wc, glob, 所有只读操作 |
+| 代码编译 | python3 -m py_compile, python3 -c 语法验证 |
+| 本地运行 | 所有 TAC-* 子项目的 python3 backend/app.py 启动 |
+| 本地测试 | curl health check, python3 -m pytest, python3 -m unittest |
+| 进程管理 | lsof 端口检查, kill / pkill 本地开发进程 |
+| 包管理 | pip install / pip list（项目相关依赖） |
+| JSON处理 | python3 -m json.tool 项目内 JSON 验证 |
+| 网络查询 | 本地 IP 获取、本地服务状态确认、curl 本地 API |
+| 记忆管理 | memory/ 目录下文件创建、更新、归档 |
+| Git 只读 | git status, git diff, git log, git show, git branch, git remote -v |
+| Git 写入 | git add, git commit, git checkout, git switch, git stash, git restore, git reset（不含 push） |
+| 临时文件 | 项目内任何缓存、临时文件、生成文件的删除 |
+| 配置修改 | 端口号、参数、本地配置文件的修改 |
+| Shell脚本 | 项目内 .sh 文件的执行 |
 
-## 3. Operations Requiring Brief Check（簡易確認で十分な操作）
+## 2. 需要一言告知（告知即执行，不等回复）
 
-以下の操作は「何をするか」を一言伝えるだけで、**返事を待たずに続行**：
+- 安装新的系统级依赖（pip install 新包）
+- 修改端口分配方案
+- 创建新的子目录结构
 
-- Git 操作（git add, git commit, git branch, git checkout — ただし git push は除く）
-- プロジェクト内生成ファイルの削除（一時ファイル、キャッシュ等）
-- ポート番号や設定パラメータの変更
-- 新しいシステムレベル依存のインストール
+## 3. 唯一需要明确确认的操作
 
-## 4. Operations Still Requiring Explicit Confirmation（明示確認が必要な操作）
+以下操作 **必须事先征得用户同意**：
 
-以下の操作は**事前にユーザー確認が必須**：
+- `git push` / 远程仓库推送
+- 外部服务数据发送（外部 API 调用、文件上传到外部）
+- git 历史删除 / force push
+- `~/.claude/` 全局配置修改
+- 生产环境 / 生产数据库操作
+- `sudo` 系统级安装
 
-- `git push` またはリモートリポジトリへのプッシュ操作
-- 外部サービスへのデータ送信（APIコール、アップロード等）
-- git 履歴の削除や force push
-- `~/.claude/` グローバル設定やプロジェクト外システムファイルの変更
-- 本番環境や本番データベースへの操作
-- sudo が必要なシステムレベルパッケージのインストール
+## 4. 沟通风格
 
-## 5. Communication Style（コミュニケーションスタイル）
+- **执行前**：一句话告知（不是询问），然后立即执行。
+  - ✅ `"提取 salary_calc 函数到独立模块..."`
+  - ❌ `"Shall I extract the salary_calc function?"`
+- **执行中**：并行执行所有独立步骤，不等待。
+- **执行后**：简洁报告。成功 → 一句话。失败 → 原因 + 自动修复。
 
-- **実行前**：一言「何をするか」を伝えて（質問ではなく告知）、すぐ実行。
-  - ✅ `"正在将 salary_calc 函数提取到独立模块..."`
-  - ❌ `"Shall I extract the salary_calc function to a separate module?"`
-- **実行中**：複数の独立したステップは可能な限り並列実行し、逐次待機しない。
-- **実行後**：簡潔に結果報告。成功 → 一言確認。失敗 → 原因説明＋自動修正。
+## 5. 错误处理
 
-## 6. Error Handling（エラー処理）
+- 可预见错误（端口占用、文件缺失等）→ **直接修复**，不询问。
+- 意外错误 → 先试一个修复方案，失败再报告。
+- 同一操作失败 3 次 → 停，报告，不进入死循环。
 
-- 予見可能なエラー（ポート使用中、ファイル不在等）は**直接修正**、質問しない。
-- 予期せぬエラーは、まず1つの修正案を試し、失敗したら状況をユーザーに説明。
-- 同じ操作に複数回失敗したら停止して報告、無限リトライループに入らない。
+## 6. Plan Mode 规则
 
-## 7. Summary（一括要約）
+- 非平凡任务（多文件、新功能、架构变更）→ 先用 EnterPlanMode 制定计划。
+- 计划批准后 → 全自动执行，不再有任何确认。
+- 计划执行中需要微调 → 直接调整继续，事后说明。
 
-**デフォルトモード：タスク受信 → 計画（必要時）→ 計画承認 → 最後まで全速実行。ユーザーは承認ボトルネックになりたくない。欲しいのは結果だけ。**
+## 7. 总结
+
+```
+用户发任务 → 计划(如需) → 批准 → 全速执行到底 → 报告结果
+中间没有任何 Yes/No 确认。用户不是瓶颈，结果才是。
+```
 
 ---
 
@@ -459,3 +469,58 @@ When helping with product design, architecture, coding, testing, or documentatio
 6. SAP Product Development Expert — think in enterprise-grade master data, transaction data, approval status, audit logs, role authorization, configuration tables, and future ERP integration patterns.
 
 Before implementing changes, Claude should briefly check whether the change affects product scope, architecture, HR/payroll compliance, UI/UX, audit logs, or future SAP/ERP integration.
+
+
+# 数据库开发规范
+
+### 连接方式
+- 必须使用环境变量读取数据库配置
+- 禁止硬编码任何数据库连接信息
+- 三环境配置：.env.dev / .env.stg / .env.prd
+
+### 表命名规范
+| 模块 | 前缀 | 示例 |
+|------|------|------|
+| 员工管理 | emp_ | emp_user, emp_department |
+| 考勤 | ts_ | ts_attendance, ts_leave |
+| 薪资 | pay_ | pay_salary, pay_payslip |
+| 费用报销 | rmb_ | rmb_expense, rmb_approval |
+| 客户发票 | inv_ | inv_invoice, inv_customer |
+| 文档管理 | doc_ | doc_file, doc_category |
+| 主数据 | md_ | md_company, md_department |
+| 面试系统 | iv_ | iv_candidate, iv_interview |
+| 员工自助 | ss_ | ss_profile, ss_request |
+
+### 字段命名规范
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | SERIAL | 主键，自增 |
+| created_at | TIMESTAMP | 创建时间 |
+| updated_at | TIMESTAMP | 更新时间 |
+| deleted_at | TIMESTAMP | 软删除（NULLABLE） |
+
+### 新建表流程
+1. 表名必须加模块前缀
+2. 字段命名遵循统一规范
+3. 先写文档确认，再创建表
+4. 必须包含 created_at 和 updated_at
+5. 提交时附带 SQL 迁移脚本
+
+### 禁止事项
+- 禁止创建无前缀的表名
+- 禁止硬编码数据库连接
+- 禁止直接操作 PRD 数据库
+- 禁止删除已有表
+
+### 示例
+```sql
+CREATE TABLE inv_invoice (
+    id SERIAL PRIMARY KEY,
+    invoice_no VARCHAR(50) NOT NULL,
+    customer_id INTEGER NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'draft',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```

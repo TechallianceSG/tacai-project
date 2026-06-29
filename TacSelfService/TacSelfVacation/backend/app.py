@@ -28,6 +28,21 @@ from typing import Any
 from urllib.error import URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 # ---------------------------------------------------------------------------
 # Paths & constants
@@ -58,6 +73,22 @@ TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or 
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAIMSG_INTERNAL_TOKEN = os.environ.get("TACAIMSG_INTERNAL_TOKEN", "tacai-internal-token").strip()
 
+
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None) -> str:
+    from urllib.parse import urlparse as _urlparse
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(PORTAL_BASE_URL)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return PORTAL_BASE_URL
+
+
 # Timeout constants
 SUPERVISOR_TIMEOUT_HOURS = 48   # 2 days
 HR_TIMEOUT_HOURS = 72           # 3 days
@@ -76,7 +107,7 @@ def public_base_url(env_name: str, fallback_port: int) -> str:
 
 
 APP_BASE_URL = public_base_url("SELFSERVICE_PUBLIC_BASE_URL", DEFAULT_PORT)
-PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL") or "").strip().rstrip("/") or public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
 TACAIMSG_INTERNAL_BASE_URL = os.environ.get("TACAIMSG_INTERNAL_BASE_URL", internal_base_url(8012)).strip().rstrip("/")
@@ -421,7 +452,14 @@ def compute_leave_days(start_str: str, end_str: str) -> float:
 # ---------------------------------------------------------------------------
 # JSON I/O
 # ---------------------------------------------------------------------------
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8").strip()
@@ -431,7 +469,6 @@ def load_json_array(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         raise ValueError(f"{path.name} must contain a JSON array.")
     return [item for item in data if isinstance(item, dict)]
-
 
 def save_json_array(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1053,7 +1090,7 @@ def _build_notification_content(lr: dict[str, Any], stage: str) -> str:
 # HTML page builders
 # ---------------------------------------------------------------------------
 def page(title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/",
-         flash: str = "", lang: str = DEFAULT_LANG) -> str:
+         flash: str = "", lang: str = DEFAULT_LANG, request_host: str | None = None) -> str:
     lang = normalize_lang(lang)
     nav_links = [
         ("/dashboard", "nav.dashboard"),
@@ -1067,7 +1104,7 @@ def page(title: str, body: str, user: dict[str, Any] | None = None, current_path
         f'<a class="{h("active" if current_path == p else "")}" href="{h(url_with_lang(p, lang))}">{h(tr(lang, label))}</a>'
         for p, label in nav_links
     )
-    portal_back = f'<a class="portal-back" href="{h(PORTAL_BASE_URL)}/dashboard?lang={h(lang)}">⌂ {h(tr(lang, "nav.portal"))}</a>'
+    portal_back = f'<a class="portal-back" href="{h(resolve_portal_url(request_host))}/?lang={h(lang)}">⌂ {h(tr(lang, "nav.portal"))}</a>'
 
     user_html = ""
     if user:
@@ -1575,6 +1612,11 @@ class SelfServiceHandler(BaseHTTPRequestHandler):
             return None
         return user
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def user_admin_login_url(self, next_path: str) -> str:
         next_url = f"{APP_BASE_URL}{next_path if next_path.startswith('/') else '/' + next_path}"
         return f"{USER_ADMIN_BASE_URL}/login?next={quote(next_url, safe='')}"
@@ -1649,31 +1691,31 @@ class SelfServiceHandler(BaseHTTPRequestHandler):
             if path == "/dashboard":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "dashboard.title"), dashboard_html(user, lang), user, "/dashboard", flash, lang))
+                self._send_html(page(tr(lang, "dashboard.title"), dashboard_html(user, lang), user, "/dashboard", flash, lang, request_host=self.request_host))
                 return
 
             if path == "/leaves/new":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "leave.new_title"), leave_form_html(user, lang), user, "/leaves/new", flash, lang))
+                self._send_html(page(tr(lang, "leave.new_title"), leave_form_html(user, lang), user, "/leaves/new", flash, lang, request_host=self.request_host))
                 return
 
             if path == "/leaves":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "leave.list_title"), leave_list_html(user, lang, "my"), user, "/leaves", flash, lang))
+                self._send_html(page(tr(lang, "leave.list_title"), leave_list_html(user, lang, "my"), user, "/leaves", flash, lang, request_host=self.request_host))
                 return
 
             if path == "/leaves/approvals":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "nav.pending_approvals"), leave_list_html(user, lang, "approvals"), user, "/leaves/approvals", flash, lang))
+                self._send_html(page(tr(lang, "nav.pending_approvals"), leave_list_html(user, lang, "approvals"), user, "/leaves/approvals", flash, lang, request_host=self.request_host))
                 return
 
             if path == "/leaves/all":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "nav.all_leaves"), leave_list_html(user, lang, "all"), user, "/leaves/all", flash, lang))
+                self._send_html(page(tr(lang, "nav.all_leaves"), leave_list_html(user, lang, "all"), user, "/leaves/all", flash, lang, request_host=self.request_host))
                 return
 
             # Leave detail
@@ -1682,20 +1724,20 @@ class SelfServiceHandler(BaseHTTPRequestHandler):
                 user = self.require_user()
                 if not user: return
                 leave_id = detail_match.group(1)
-                self._send_html(page(tr(lang, "leave.detail_title"), leave_detail_html(user, lang, leave_id), user, f"/leaves/{leave_id}", flash, lang))
+                self._send_html(page(tr(lang, "leave.detail_title"), leave_detail_html(user, lang, leave_id), user, f"/leaves/{leave_id}", flash, lang, request_host=self.request_host))
                 return
 
             if path == "/audit-logs":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "nav.audit"), audit_html(lang), user, "/audit-logs", flash, lang))
+                self._send_html(page(tr(lang, "nav.audit"), audit_html(lang), user, "/audit-logs", flash, lang, request_host=self.request_host))
                 return
 
-            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3><p>Page not found: {h(path)}</p></div>', lang=lang), status=404)
+            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3><p>Page not found: {h(path)}</p></div>', lang=lang, request_host=self.request_host), status=404)
 
         except Exception as exc:
             user = self.current_user()
-            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang), status=500)
+            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang, request_host=self.request_host), status=500)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -1783,14 +1825,14 @@ class SelfServiceHandler(BaseHTTPRequestHandler):
                 self._send_redirect(url_with_lang(f"/leaves/{leave_id}", lang), tr(lang, "msg.leave_cancelled"))
                 return
 
-            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3></div>', lang=lang), status=404)
+            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3></div>', lang=lang, request_host=self.request_host), status=404)
 
         except ValueError as exc:
             user = self.current_user()
-            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang), status=400)
+            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang, request_host=self.request_host), status=400)
         except Exception as exc:
             user = self.current_user()
-            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang), status=500)
+            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang, request_host=self.request_host), status=500)
 
     def log_message(self, fmt: str, *args: object) -> None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

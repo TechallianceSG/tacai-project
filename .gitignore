@@ -3,6 +3,9 @@
 *.env.*
 .env.local
 .env.production
+
+# Allow env example template to be committed
+!.env.example
 *.key
 *.pem
 *.crt

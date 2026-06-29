@@ -34,6 +34,21 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 EMPLOYEES_PATH = ROOT_DIR / "database" / "employees.json"
@@ -53,8 +68,26 @@ ONBOARDING_DOCS_RELATIVE_DIR = "docs/onboarding"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8012, 8016, 8018}
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
+
+
+def _resolve_host(request_host: str | None = None) -> str:
+    """Return 127.0.0.1 when accessed locally, otherwise the LAN IP."""
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None, default_portal_url: str | None = None) -> str:
+    """Return portal URL adjusted for the request origin."""
+    from urllib.parse import urlparse as _urlparse
+    portal = default_portal_url or PORTAL_BASE_URL
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(portal)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return portal
 
 
 def local_base_url(port: int) -> str:
@@ -670,18 +703,23 @@ EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 NON_FOREIGN_NATIONALITIES = {"japan", "japanese", "日本", "日本国籍", "日本人"}
 
 
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
-    try:
-        with path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-    except json.JSONDecodeError:
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
         return []
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    return []
-
+    data = json.loads(text)
+    if not isinstance(data, list):
+        raise ValueError(f"{path.name} must contain a JSON array.")
+    return [item for item in data if isinstance(item, dict)]
 
 def save_json_array(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -4354,7 +4392,7 @@ def current_user_html(user: dict[str, Any] | None = None) -> str:
     return f'<span class="current-user-chip" title="Login: {h(login_time)}"><strong>👤 {h(account)}</strong><small>{h(display_name)}{(" · " + h(entity_code)) if entity_code else ""}</small><small>Login: {h(login_time)}</small></span>'
 
 
-def render_page(title: str, body: str, lang: str, messages: dict[str, str], current_url: str = "/", current_user: dict[str, Any] | None = None) -> bytes:
+def render_page(title: str, body: str, lang: str, messages: dict[str, str], current_url: str = "/", current_user: dict[str, Any] | None = None, request_host: str | None = None) -> bytes:
     parsed_current = urlparse(current_url or "/")
     current_path = parsed_current.path or "/"
     parsed_query = parse_qs(parsed_current.query)
@@ -4372,7 +4410,7 @@ def render_page(title: str, body: str, lang: str, messages: dict[str, str], curr
     ]
     primary_nav_html = "".join(f'<a href="{h(url_with_lang(path, lang))}">{h(t(messages, key))}</a>' for path, key in primary_nav)
     portal_nav_html = (
-        f'<a class="portal-link" href="{h(PORTAL_BASE_URL)}" title="{h(t(messages, "nav.portal_tooltip"))}" '
+        f'<a class="portal-link" href="{h(resolve_portal_url(request_host))}" title="{h(t(messages, "nav.portal_tooltip"))}" '
         f'aria-label="{h(t(messages, "nav.portal_tooltip"))}"><span class="portal-icon" aria-hidden="true">⌂</span>{h(t(messages, "nav.portal"))}</a>'
     )
     language_html = "".join(
@@ -4640,6 +4678,12 @@ def render_page(title: str, body: str, lang: str, messages: dict[str, str], curr
 
 class EmployeeAdminHandler(BaseHTTPRequestHandler):
     server_version = "TACEmployeeAdmin/0.3"
+
+    @property
+    def request_host(self) -> str:
+        """Return the request Host header hostname (without port)."""
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
 
     def csrf_origin_allowed(self) -> bool:
         source = self.headers.get("Origin") or self.headers.get("Referer")
@@ -8338,7 +8382,7 @@ class EmployeeAdminHandler(BaseHTTPRequestHandler):
         if flash:
             body = f'<div class="message-strip message-success" role="status">{h(flash)}</div>' + body
             self._clear_flash_after_response = True
-        self.send_bytes(status, "text/html; charset=utf-8", render_page(title, body, lang, messages, self.path, self.current_user()))
+        self.send_bytes(status, "text/html; charset=utf-8", render_page(title, body, lang, messages, self.path, self.current_user(), self.request_host))
 
     def send_json(self, status: int, payload: Any) -> None:
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")

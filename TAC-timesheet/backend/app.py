@@ -20,6 +20,21 @@ from typing import Any
 from urllib.error import URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 I18N_DIR = ROOT_DIR / "i18n"
@@ -38,7 +53,24 @@ TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or 
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8012, 8016, 8018}
+
+
+def _resolve_host(request_host: str | None = None) -> str:
+    """Return 127.0.0.1 when accessed locally, otherwise the LAN IP."""
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None, default_portal_url: str | None = None) -> str:
+    """Return portal URL adjusted for the request origin."""
+    portal = default_portal_url or PORTAL_BASE_URL
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = urlparse(portal)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return portal
 
 
 def local_base_url(port: int) -> str:
@@ -59,7 +91,7 @@ def base_url_host(value: str) -> str:
 
 
 APP_BASE_URL = public_base_url("TIMESHEET_PUBLIC_BASE_URL", 8002)
-PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL") or "").strip().rstrip("/") or public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 EMPLOYEEADMIN_BASE_URL = public_base_url("EMPLOYEEADMIN_PUBLIC_BASE_URL", 8004)
 EMPLOYEEADMIN_INTERNAL_BASE_URL = os.environ.get("EMPLOYEEADMIN_INTERNAL_BASE_URL", internal_base_url(8004)).strip().rstrip("/")
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
@@ -348,6 +380,12 @@ def language_switcher_html(lang: str, current_path: str = "/") -> str:
 class TACTimesheetHandler(BaseHTTPRequestHandler):
     server_version = "TACTimesheetWeb/0.1"
 
+    @property
+    def request_host(self) -> str:
+        """Return the request Host header hostname (without port)."""
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def csrf_origin_allowed(self) -> bool:
         source = self.headers.get("Origin") or self.headers.get("Referer")
         if not source:
@@ -388,7 +426,7 @@ class TACTimesheetHandler(BaseHTTPRequestHandler):
             "messages": messages,
             "user": user,
             "current_entity": current_entity,
-            "portal_url": PORTAL_BASE_URL,
+            "portal_url": resolve_portal_url(self.request_host),
             "session_id": self.current_session_id(),
             "flash": self.flash_message(),
             "current_path": urlparse(self.path).path,
@@ -3325,7 +3363,14 @@ def error_message_html(message: str, context: dict[str, Any] | None = None) -> s
     return f"<section class='panel'><h2>{h(t(messages, 'error.input_title'))}</h2><p class='warn'>{h(message)}</p></section>"
 
 
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8").strip()
@@ -3336,11 +3381,15 @@ def load_json_array(path: Path) -> list[dict[str, Any]]:
         raise ValueError(f"{path.name} must contain a JSON array.")
     return [item for item in data if isinstance(item, dict)]
 
-
-def write_json_array(path: Path, records: list[dict[str, Any]]) -> None:
+def write_json_array(path: Path, records: list) -> None:
+    if _PG_AVAILABLE:
+        try:
+            _db.save_table(_db.path_to_table(path), records)
+            return
+        except Exception:
+            pass
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
 
 def audit_entity_from_values(before_value: dict[str, Any] | None, after_value: dict[str, Any] | None, context: dict[str, Any] | None = None) -> dict[str, str]:
     entity = context_current_entity(context)

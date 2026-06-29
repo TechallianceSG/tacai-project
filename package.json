@@ -1,0 +1,24 @@
+{
+  "name": "tacai-project",
+  "version": "1.0.0",
+  "description": "TACAI Project — HR/Payroll/Recruitment multi-service platform",
+  "scripts": {
+    "dev": "set -a && source .env.dev && echo \"[DEV]  NODE_ENV=$NODE_ENV  Portal=$PORT  Auth=$AUTH_PORT  DB=$DB_NAME\" && python3 -c \"import os; print(f'   DB connect → {os.environ.get(\\\"DB_USER\\\")}@${os.environ.get(\\\"DB_HOST\\\")}:${os.environ.get(\\\"DB_PORT\\\")}/${os.environ.get(\\\"DB_NAME\\\")}')\"",
+    "stg": "set -a && source .env.stg && echo \"[STG]  NODE_ENV=$NODE_ENV  Portal=$PORT  Auth=$AUTH_PORT  DB=$DB_NAME\" && python3 -c \"import os; print(f'   DB connect → {os.environ.get(\\\"DB_USER\\\")}@${os.environ.get(\\\"DB_HOST\\\")}:${os.environ.get(\\\"DB_PORT\\\")}/${os.environ.get(\\\"DB_NAME\\\")}')\"",
+    "prd": "set -a && source .env.prd && echo \"[PRD]  NODE_ENV=$NODE_ENV  Portal=$PORT  Auth=$AUTH_PORT  DB=$DB_NAME\" && python3 -c \"import os; print(f'   DB connect → {os.environ.get(\\\"DB_USER\\\")}@${os.environ.get(\\\"DB_HOST\\\")}:${os.environ.get(\\\"DB_PORT\\\")}/${os.environ.get(\\\"DB_NAME\\\")}')\"",
+    "dev:start": "bash start_tacai_lan.sh start dev",
+    "stg:start": "bash start_tacai_lan.sh start stg",
+    "prd:start": "bash start_tacai_lan.sh start prd",
+    "all:start": "bash start_tacai_lan.sh start all",
+    "dev:stop": "bash start_tacai_lan.sh stop dev",
+    "stg:stop": "bash start_tacai_lan.sh stop stg",
+    "prd:stop": "bash start_tacai_lan.sh stop prd",
+    "all:stop": "bash start_tacai_lan.sh stop all",
+    "status": "bash start_tacai_lan.sh status",
+    "db:test:dev": "set -a && source .env.dev && PGPASSWORD=$DB_PASS /opt/homebrew/opt/postgresql@16/bin/psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c \"SELECT 'tacai_dev OK' as dev_status;\"",
+    "db:test:stg": "set -a && source .env.stg && PGPASSWORD=$DB_PASS /opt/homebrew/opt/postgresql@16/bin/psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c \"SELECT 'tacai_stg OK' as stg_status;\"",
+    "db:test:prd": "set -a && source .env.prd && PGPASSWORD=$DB_PASS /opt/homebrew/opt/postgresql@16/bin/psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c \"SELECT 'tacai_prd OK' as prd_status;\""
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

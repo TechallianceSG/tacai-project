@@ -23,7 +23,6 @@ ROUTES = [
     ("/payroll", "127.0.0.1", 8001, "/payroll"),
     ("/tacpayroll", "127.0.0.1", 8015, "/tacpayroll"),
     ("/tacaipaysg", "127.0.0.1", 8016, "/tacaipaysg"),
-    ("/tacaipayjp", "127.0.0.1", 8017, "/tacaipayjp"),
     ("/interviewready", "127.0.0.1", 8000, "/interviewready"),
     ("/vendorpayables", "127.0.0.1", 8008, "/vendorpayables"),
     ("/billing", "127.0.0.1", 8009, "/billing"),
@@ -53,9 +52,6 @@ BASE_URL_REWRITES = [
     ("https://tacaipaysg.tactokyo.com", "/tacaipaysg"),
     ("http://127.0.0.1:8016", "/tacaipaysg"),
     ("http://localhost:8016", "/tacaipaysg"),
-    ("https://tacaipayjp.tactokyo.com", "/tacaipayjp"),
-    ("http://127.0.0.1:8017", "/tacaipayjp"),
-    ("http://localhost:8017", "/tacaipayjp"),
     ("https://employee.tactokyo.com", "/employeeadmin"),
     ("http://127.0.0.1:8004", "/employeeadmin"),
     ("http://localhost:8004", "/employeeadmin"),
@@ -98,7 +94,6 @@ LAN_PORT_PREFIXES = {
     8012: "/tacaimsg",
     8015: "/tacpayroll",
     8016: "/tacaipaysg",
-    8017: "/tacaipayjp",
 }
 
 URL_REWRITES = list(BASE_URL_REWRITES)
@@ -199,7 +194,6 @@ def rewrite_text(text: str, public_prefix: str) -> str:
         "/payroll",
         "/tacpayroll",
         "/tacaipaysg",
-        "/tacaipayjp",
         "/interviewready",
         "/vendorpayables",
         "/billing",
@@ -274,7 +268,6 @@ def rewrite_location(value: str, public_prefix: str) -> str:
         "/payroll",
         "/tacpayroll",
         "/tacaipaysg",
-        "/tacaipayjp",
         "/interviewready",
         "/vendorpayables",
         "/billing",
@@ -396,7 +389,6 @@ def main() -> None:
     args = parser.parse_args()
     server = ThreadingHTTPServer((args.host, args.port), GatewayHandler)
     print(f"TACAI temporary gateway listening on http://{args.host}:{args.port}")
-    print("Routes include /portal, /useradmin, /tacaipaysg, /tacaipayjp, /tacpayroll, /timesheet, /expense")
     server.serve_forever()
 
 

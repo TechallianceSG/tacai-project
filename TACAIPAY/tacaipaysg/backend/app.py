@@ -29,6 +29,22 @@ from urllib.error import URLError
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
+
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DATABASE_DIR = ROOT_DIR / "database"
 I18N_DIR = ROOT_DIR / "i18n"
@@ -57,6 +73,24 @@ DEFAULT_PORT = 8016
 USER_ADMIN_SESSION_COOKIE = "tacai_session_id"
 REQUIRED_MODULE_PERMISSION = "tacaipay_sg.access"
 TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None, default_portal_url: str | None = None) -> str:
+    from urllib.parse import urlparse as _urlparse
+    portal = default_portal_url or PORTAL_BASE_URL
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(portal)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return portal
+
+
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 MAX_POST_BYTES = 16 * 1024 * 1024  # 16MB for file uploads (Excel, PDF)
 MAX_POST_FORM_BYTES = 2 * 1024 * 1024  # 2MB for regular form POSTs
@@ -885,6 +919,18 @@ def slug(value: str) -> str:
 
 
 def load_json(path: Path, default: Any) -> Any:
+    if _PG_AVAILABLE:
+        try:
+            table = _db.path_to_table(path)
+            result = _db.load_table(table)
+            if result is not None:
+                if not result and isinstance(default, list):
+                    _db.save_table(table, default)
+                    return default
+                return result
+        except Exception:
+            pass
+    # JSON fallback
     ensure_dirs()
     if not path.exists():
         save_json(path, default)
@@ -895,14 +941,20 @@ def load_json(path: Path, default: Any) -> Any:
     except json.JSONDecodeError:
         return default
 
-
 def save_json(path: Path, data: Any) -> None:
+    if _PG_AVAILABLE and isinstance(data, list):
+        try:
+            table = _db.path_to_table(path)
+            _db.save_table(table, data)
+            return
+        except Exception:
+            pass
+    # JSON fallback
     ensure_dirs()
     tmp = path.with_suffix(path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     tmp.replace(path)
-
 
 def append_audit(module: str, record_id: str, action: str, before: Any = None, after: Any = None, user: str = USER_ACTOR) -> None:
     logs = load_json(AUDIT_LOGS_PATH, [])
@@ -5164,7 +5216,7 @@ def compute_currency_totals(records: list[dict[str, Any]]) -> dict[str, dict[str
     return totals
 
 
-def page(lang: str, title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/", current_query: dict[str, list[str]] | None = None) -> bytes:
+def page(lang: str, title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/", current_query: dict[str, list[str]] | None = None, portal_url: str | None = None) -> bytes:
     current_query = current_query or {}
     nav_links = [
         ("/", "nav.dashboard"),
@@ -5192,7 +5244,7 @@ def page(lang: str, title: str, body: str, user: dict[str, Any] | None = None, c
     notice_type = clean((current_query.get("notice_type") or ["success"])[0])
     notice_class = "message-warning" if notice_type in {"warning", "warn", "error"} else "message-success"
     notice_html = f'<section class="message-strip {notice_class}" role="status">{escape(notice)}</section>' if notice else ""
-    portal_html = f'<a class="portal-link" href="{escape(PORTAL_BASE_URL)}"><span class="portal-icon">⌂</span> Back to Portal</a>'
+    portal_html = f'<a class="portal-link" href="{escape(portal_url or PORTAL_BASE_URL)}"><span class="portal-icon">⌂</span> Back to Portal</a>'
     html = f"""<!doctype html>
 <html lang="{escape(lang)}">
 <head>
@@ -7665,6 +7717,11 @@ class Handler(BaseHTTPRequestHandler):
 
     server_version = "TACAIPaySG/0.1"
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def send_bytes(self, content: bytes, content_type: str = "text/html; charset=utf-8", status: int = 200, filename: str = "") -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -7680,7 +7737,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_page(self, lang: str, title: str, body: str, user: dict[str, Any] | None = None, status: int = 200) -> None:
         parsed = urlparse(self.path)
-        self.send_bytes(page(lang, title, body, user, parsed.path or "/", parse_qs(parsed.query)), status=status)
+        self.send_bytes(page(lang, title, body, user, parsed.path or "/", parse_qs(parsed.query), portal_url=resolve_portal_url(self.request_host)), status=status)
 
     def redirect(self, location: str) -> None:
         self.send_response(303)
@@ -7711,7 +7768,7 @@ class Handler(BaseHTTPRequestHandler):
         public_host = host if host and host not in {"127.0.0.1", "localhost", "::1"} else TACAI_PUBLIC_HOST
         base = f"http://{public_host}:{DEFAULT_PORT}" if public_host else APP_BASE_URL
         next_url = f"{base}{next_path if next_path.startswith('/') else '/' + next_path}"
-        user_admin_base = f"http://{public_host}:8006" if public_host else USER_ADMIN_BASE_URL
+        user_admin_base = f"http://{public_host}:{int(os.environ.get('AUTH_PORT', '8006'))}" if public_host else USER_ADMIN_BASE_URL
         return f"{user_admin_base}/login?next={quote(next_url, safe='')}"
 
     def require_user(self, lang: str, permission_key: str = REQUIRED_MODULE_PERMISSION) -> dict[str, Any] | None:

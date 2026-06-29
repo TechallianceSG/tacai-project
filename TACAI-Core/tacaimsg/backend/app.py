@@ -31,6 +31,21 @@ from typing import Any
 from urllib.error import URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 # ---------------------------------------------------------------------------
 # Paths & constants
@@ -70,6 +85,20 @@ TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip()
 TACAIMSG_INTERNAL_TOKEN = os.environ.get("TACAIMSG_INTERNAL_TOKEN", "tacai-internal-token").strip()
 
 
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = urlparse(PORTAL_BASE_URL)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return PORTAL_BASE_URL
+
+
 def local_base_url(port: int) -> str:
     return f"http://{TACAI_PUBLIC_HOST}:{port}"
 
@@ -83,7 +112,7 @@ def public_base_url(env_name: str, fallback_port: int) -> str:
 
 
 APP_BASE_URL = public_base_url("TACAIMSG_PUBLIC_BASE_URL", DEFAULT_PORT)
-PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL") or "").strip().rstrip("/") or public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
 
@@ -483,7 +512,14 @@ def pagination_html(current_page: int, total_pages: int, base_url: str) -> str:
 # ---------------------------------------------------------------------------
 # JSON I/O
 # ---------------------------------------------------------------------------
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8").strip()
@@ -493,7 +529,6 @@ def load_json_array(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         raise ValueError(f"{path.name} must contain a JSON array.")
     return [item for item in data if isinstance(item, dict)]
-
 
 def save_json_array(path: Path, records: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1161,7 +1196,7 @@ def send_message_batch(
 # ---------------------------------------------------------------------------
 # Page renderer (SAP/Fiori-like inline CSS)
 # ---------------------------------------------------------------------------
-def page(title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/", flash: str = "", lang: str = DEFAULT_LANG) -> str:
+def page(title: str, body: str, user: dict[str, Any] | None = None, current_path: str = "/", flash: str = "", lang: str = DEFAULT_LANG, request_host: str | None = None) -> str:
     lang = normalize_lang(lang)
     nav_links = [
         ("/dashboard", "nav.dashboard", "tacaimsg.access", "📊"),
@@ -1176,7 +1211,8 @@ def page(title: str, body: str, user: dict[str, Any] | None = None, current_path
         for path, label_key, permission_key, icon in nav_links
         if has_permission(user, permission_key)
     )
-    portal_back_html = f'<a class="portal-back" href="{h(PORTAL_BASE_URL)}/dashboard?lang={h(lang)}">⌂ {h(tr(lang, "nav.portal"))}</a>'
+    portal_back_url = resolve_portal_url(request_host)
+    portal_back_html = f'<a class="portal-back" href="{h(portal_back_url)}/?lang={h(lang)}">⌂ {h(tr(lang, "nav.portal"))}</a>'
     entity = user_entity(user)
     user_html = ""
     if user:
@@ -1609,6 +1645,11 @@ def api_message_detail(self: BaseHTTPRequestHandler, user: dict[str, Any], msg_i
 class TacaiMsgHandler(BaseHTTPRequestHandler):
     server_version = "TACAIMsg/0.1"
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def current_session_id(self) -> str:
         cookie = SimpleCookie(self.headers.get("Cookie", ""))
         morsel = cookie.get(USER_ADMIN_SESSION_COOKIE)
@@ -1623,10 +1664,10 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
             self._send_redirect(self.user_admin_login_url(self.path))
             return None
         if not has_permission(user, REQUIRED_MODULE_PERMISSION):
-            self._send_html(page("Forbidden", forbidden_html("Missing tacaimsg.access permission."), user, lang=getattr(self, "_response_lang", DEFAULT_LANG)), status=403)
+            self._send_html(page("Forbidden", forbidden_html("Missing tacaimsg.access permission."), user, lang=getattr(self, "_response_lang", DEFAULT_LANG), request_host=self.request_host), status=403)
             return None
         if permission_key and not has_permission(user, permission_key):
-            self._send_html(page("Forbidden", forbidden_html(f"Missing {permission_key} permission."), user, lang=getattr(self, "_response_lang", DEFAULT_LANG)), status=403)
+            self._send_html(page("Forbidden", forbidden_html(f"Missing {permission_key} permission."), user, lang=getattr(self, "_response_lang", DEFAULT_LANG), request_host=self.request_host), status=403)
             return None
         return user
 
@@ -1806,17 +1847,17 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
             if path == "/dashboard":
                 user = self.require_user()
                 if not user: return
-                self._send_html(page(tr(lang, "dashboard.title"), dashboard_html(user, lang), user, "/dashboard", flash, lang))
+                self._send_html(page(tr(lang, "dashboard.title"), dashboard_html(user, lang), user, "/dashboard", flash, lang, request_host=self.request_host))
                 return
             if path == "/messages/inbox":
                 user = self.require_user("tacaimsg.view")
                 if not user: return
-                self._send_html(page(tr(lang, "inbox.title"), inbox_html(user, lang, query), user, "/messages/inbox", flash, lang))
+                self._send_html(page(tr(lang, "inbox.title"), inbox_html(user, lang, query), user, "/messages/inbox", flash, lang, request_host=self.request_host))
                 return
             if path == "/messages/search":
                 user = self.require_user("tacaimsg.view")
                 if not user: return
-                self._send_html(page(tr(lang, "search.title"), search_html(user, lang, query), user, "/messages/search", flash, lang))
+                self._send_html(page(tr(lang, "search.title"), search_html(user, lang, query), user, "/messages/search", flash, lang, request_host=self.request_host))
                 return
             if path.startswith("/messages/"):
                 msg_match = re.match(r"^/messages/(MSG-\d{6}-\d+)$", path)
@@ -1826,17 +1867,17 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
                     msg_id = msg_match.group(1)
                     m = get_message(msg_id)
                     if not m:
-                        self._send_html(page("Not Found", '<div class="message-strip message-error">Message not found</div>', user, lang=lang), status=404)
+                        self._send_html(page("Not Found", '<div class="message-strip message-error">Message not found</div>', user, lang=lang, request_host=self.request_host), status=404)
                         return
                     # Auto-mark as read when viewing
                     if m.get("status") == "unread":
                         mark_read(msg_id, user)
-                    self._send_html(page(tr(lang, "message.detail_title"), message_detail_html(user, lang, msg_id), user, "/messages/inbox", flash, lang))
+                    self._send_html(page(tr(lang, "message.detail_title"), message_detail_html(user, lang, msg_id), user, "/messages/inbox", flash, lang, request_host=self.request_host))
                     return
             if path == "/audit-logs":
                 user = self.require_user("tacaimsg.audit.view")
                 if not user: return
-                self._send_html(page(tr(lang, "audit.title"), audit_html(user, lang), user, "/audit-logs", flash, lang))
+                self._send_html(page(tr(lang, "audit.title"), audit_html(user, lang), user, "/audit-logs", flash, lang, request_host=self.request_host))
                 return
 
             # === Phase B: Workflow routes ===
@@ -1855,14 +1896,14 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
                 if not user: return
                 if wf:
                     body_html = wf.wf_list_html(user, lang, workflows(), workflow_steps(), query, url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "wf.list_title"), body_html, user, "/workflows", flash, lang))
+                    self._send_html(page(tr(lang, "wf.list_title"), body_html, user, "/workflows", flash, lang, request_host=self.request_host))
                 return
             if path == "/workflows/new":
                 user = self.require_user("tacaimsg.workflow")
                 if not user: return
                 if wf:
                     body_html = wf.wf_new_html(user, lang, workflow_templates(), url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "wf.new_title"), body_html, user, "/workflows/new", flash, lang))
+                    self._send_html(page(tr(lang, "wf.new_title"), body_html, user, "/workflows/new", flash, lang, request_host=self.request_host))
                 return
             if path == "/workflows/export":
                 user = self.require_user("tacaimsg.workflow")
@@ -1876,14 +1917,14 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
                 if not user: return
                 if wf:
                     body_html = wf.wft_list_html(user, lang, workflow_templates(), url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "wft.title"), body_html, user, "/workflows/templates", flash, lang))
+                    self._send_html(page(tr(lang, "wft.title"), body_html, user, "/workflows/templates", flash, lang, request_host=self.request_host))
                 return
             if path == "/workflows/templates/new":
                 user = self.require_user("tacaimsg.admin")
                 if not user: return
                 if wf:
                     body_html = wf.wft_form_html(user, lang, None, url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "wft.new_title"), body_html, user, "/workflows/templates/new", flash, lang))
+                    self._send_html(page(tr(lang, "wft.new_title"), body_html, user, "/workflows/templates/new", flash, lang, request_host=self.request_host))
                 return
             wft_match = re.match(r"^/workflows/templates/(WFT-\d+)$", path)
             if wft_match:
@@ -1896,7 +1937,7 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
                             tpl = t; break
                     if tpl:
                         body_html = wf.wft_form_html(user, lang, tpl, url_with_lang, h, tr)
-                        self._send_html(page(tr(lang, "wft.edit_title"), body_html, user, path, flash, lang))
+                        self._send_html(page(tr(lang, "wft.edit_title"), body_html, user, path, flash, lang, request_host=self.request_host))
                 return
             wf_match = re.match(r"^/workflows/(WF-\d{6}-\d+)$", path)
             if wf_match:
@@ -1904,34 +1945,34 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
                 if not user: return
                 if wf:
                     body_html = wf.wf_detail_html(user, lang, wf_match.group(1), workflows(), workflow_steps(), workflow_records(), url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "wf.detail_title"), body_html, user, path, flash, lang))
+                    self._send_html(page(tr(lang, "wf.detail_title"), body_html, user, path, flash, lang, request_host=self.request_host))
                 return
             if path == "/delegations":
                 user = self.require_user("tacaimsg.delegate")
                 if not user: return
                 if wf:
                     body_html = wf.delegations_html(user, lang, delegations(), url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "del.title"), body_html, user, "/delegations", flash, lang))
+                    self._send_html(page(tr(lang, "del.title"), body_html, user, "/delegations", flash, lang, request_host=self.request_host))
                 return
             if path == "/delegations/new":
                 user = self.require_user("tacaimsg.delegate")
                 if not user: return
                 if wf:
                     body_html = wf.delegation_new_html(user, lang, url_with_lang, h, tr)
-                    self._send_html(page(tr(lang, "del.new_title"), body_html, user, "/delegations/new", flash, lang))
+                    self._send_html(page(tr(lang, "del.new_title"), body_html, user, "/delegations/new", flash, lang, request_host=self.request_host))
                 return
 
             # Phase C placeholder
             if path.startswith("/notifications"):
                 user = self.require_user()
                 if not user: return
-                self._send_html(page("Coming Soon", '<div class="message-strip"><strong>Phase C</strong> — Notifications coming next.</div>', user, path, flash, lang), status=501)
+                self._send_html(page("Coming Soon", '<div class="message-strip"><strong>Phase C</strong> — Notifications coming next.</div>', user, path, flash, lang, request_host=self.request_host), status=501)
                 return
 
-            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3><p>Page not found: {h(path)}</p></div>', lang=lang), status=404)
+            self._send_html(page("Not Found", f'<div class="message-strip message-error"><h3>404</h3><p>Page not found: {h(path)}</p></div>', lang=lang, request_host=self.request_host), status=404)
         except Exception as exc:
             user = self.current_user()
-            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang), status=500)
+            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang, request_host=self.request_host), status=500)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -2264,7 +2305,7 @@ class TacaiMsgHandler(BaseHTTPRequestHandler):
             pass  # Error already sent in _read_body_json
         except Exception as exc:
             user = self.current_user()
-            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang), status=500)
+            self._send_html(page("Error", f'<div class="message-strip message-error"><h3>Error</h3><p>{h(str(exc))}</p></div>', user, lang=lang, request_host=self.request_host), status=500)
 
     def do_PUT(self) -> None:
         self.do_POST()

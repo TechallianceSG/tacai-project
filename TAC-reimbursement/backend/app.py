@@ -27,6 +27,21 @@ from urllib.error import URLError
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 import unicodedata
+# === PostgreSQL integration ===
+import sys as _sys, os as _os
+from pathlib import Path as _Path
+_pg_project_root = _Path(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+while not (_pg_project_root / 'TACAI-Core').exists() and _pg_project_root != _pg_project_root.parent:
+    _pg_project_root = _pg_project_root.parent
+_pg_core_path = _pg_project_root / 'TACAI-Core'
+if str(_pg_core_path) not in _sys.path:
+    _sys.path.insert(0, str(_pg_core_path))
+try:
+    import db_utils as _db
+    _PG_AVAILABLE = _db._is_available() if _db.DB_ENABLED else False
+except Exception:
+    _PG_AVAILABLE = False
+# ============================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 I18N_DIR = ROOT_DIR / "i18n"
@@ -44,7 +59,23 @@ TACAI_PUBLIC_HOST = os.environ.get("TACAI_PUBLIC_HOST", "127.0.0.1").strip() or 
 TACAI_INTERNAL_HOST = os.environ.get("TACAI_INTERNAL_HOST", "127.0.0.1").strip() or "127.0.0.1"
 CONFIGURED_PUBLIC_HOSTS = {host.strip().lower() for host in os.environ.get("TACAI_ALLOWED_PUBLIC_HOSTS", "").split(",") if host.strip()}
 LOCAL_ALLOWED_HOSTS = {"127.0.0.1", "localhost", TACAI_PUBLIC_HOST, TACAI_INTERNAL_HOST}
-LOCAL_ALLOWED_PORTS = {8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009}
+LOCAL_ALLOWED_PORTS = {3000, 3001, 4000, 4001, 5000, 5001, 6000, 6001, 8000, 8001, 8002, 8003, 8004, 8005, 8006, 8007, 8008, 8009, 8012, 8016, 8018}
+
+
+def _resolve_host(request_host: str | None = None) -> str:
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        return "127.0.0.1"
+    return TACAI_PUBLIC_HOST
+
+
+def resolve_portal_url(request_host: str | None = None, default_portal_url: str | None = None) -> str:
+    from urllib.parse import urlparse as _urlparse
+    portal = default_portal_url or PORTAL_BASE_URL
+    if request_host and request_host in {"127.0.0.1", "localhost"}:
+        parsed = _urlparse(portal)
+        port = parsed.port or 3000
+        return f"http://127.0.0.1:{port}{parsed.path if parsed.path else ''}"
+    return portal
 
 
 def local_base_url(port: int) -> str:
@@ -65,7 +96,7 @@ def base_url_host(value: str) -> str:
 
 
 APP_BASE_URL = public_base_url("EXPENSE_PUBLIC_BASE_URL", 8003)
-PORTAL_BASE_URL = public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
+PORTAL_BASE_URL = (os.environ.get("PORTAL_BASE_URL") or "").strip().rstrip("/") or public_base_url("PORTAL_PUBLIC_BASE_URL", 8005)
 USER_ADMIN_BASE_URL = public_base_url("USER_ADMIN_PUBLIC_BASE_URL", 8006)
 USER_ADMIN_INTERNAL_BASE_URL = os.environ.get("USER_ADMIN_INTERNAL_BASE_URL", internal_base_url(8006)).strip().rstrip("/")
 PUBLIC_ALLOWED_HOSTS = CONFIGURED_PUBLIC_HOSTS | {host for host in [base_url_host(APP_BASE_URL), base_url_host(PORTAL_BASE_URL), base_url_host(USER_ADMIN_BASE_URL)] if host}
@@ -513,6 +544,11 @@ class TACReimbursementHandler(BaseHTTPRequestHandler):
             return True
         return parsed.scheme == "https" and host in PUBLIC_ALLOWED_HOSTS and parsed.port in {None, 443}
 
+    @property
+    def request_host(self) -> str:
+        raw = self.headers.get("Host", "")
+        return raw.split(":", 1)[0] if raw else "127.0.0.1"
+
     def current_user(self) -> dict[str, Any] | None:
         cookie = SimpleCookie(self.headers.get("Cookie", ""))
         session_cookie = cookie.get(USER_ADMIN_SESSION_COOKIE)
@@ -547,6 +583,7 @@ class TACReimbursementHandler(BaseHTTPRequestHandler):
             return
         user["_lang"] = lang
         user["_current_path"] = path
+        user["_request_host"] = self.request_host
         if path in {"/finance-review", "/finance-claim"} and not can_view_finance_queue(user):
             self.send_error(403, "Missing reimbursement.approve permission")
             return
@@ -652,6 +689,7 @@ class TACReimbursementHandler(BaseHTTPRequestHandler):
             return
         user["_lang"] = lang
         user["_current_path"] = path
+        user["_request_host"] = self.request_host
         try:
             form, files = self._parse_request_form()
             if path == "/claim-new":
@@ -880,8 +918,10 @@ def page(title: str, body: str, user: dict[str, Any] | None = None) -> str:
         for path, key in nav_links
     )
     language_html = language_switcher_html(lang, current_path)
+    _request_host = (user or {}).get("_request_host")
+    portal_url = resolve_portal_url(request_host=_request_host)
     portal_html = (
-        f'<a class="portal-link" href="{escape(PORTAL_BASE_URL)}" title="{escape(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}" '
+        f'<a class="portal-link" href="{escape(portal_url)}" title="{escape(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}" '
         f'aria-label="{escape(t(messages, "nav.portal_tooltip", "Return to TACAI Portal"))}"><span class="portal-icon" aria-hidden="true">⌂</span>{escape(t(messages, "nav.portal"))}</a>'
     )
     return f"""<!doctype html>
@@ -1849,7 +1889,14 @@ def error_message_html(message: str) -> str:
     return f"<section class='panel'><h2>Input Error / 入力エラー</h2><p class='message-strip message-error'>{escape(message)}</p></section>"
 
 
-def load_json_array(path: Path) -> list[dict[str, Any]]:
+def load_json_array(path: Path) -> list:
+    if _PG_AVAILABLE:
+        try:
+            result = _db.load_table(_db.path_to_table(path))
+            if result is not None:
+                return result
+        except Exception:
+            pass
     if not path.exists():
         return []
     text = path.read_text(encoding="utf-8").strip()
@@ -1860,11 +1907,15 @@ def load_json_array(path: Path) -> list[dict[str, Any]]:
         raise ValueError(f"{path.name} must contain a JSON array.")
     return [item for item in data if isinstance(item, dict)]
 
-
-def write_json_array(path: Path, records: list[dict[str, Any]]) -> None:
+def write_json_array(path: Path, records: list) -> None:
+    if _PG_AVAILABLE:
+        try:
+            _db.save_table(_db.path_to_table(path), records)
+            return
+        except Exception:
+            pass
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(records, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
 
 def load_audit_logs() -> list[dict[str, Any]]:
     return load_json_array(AUDIT_LOGS_PATH)
