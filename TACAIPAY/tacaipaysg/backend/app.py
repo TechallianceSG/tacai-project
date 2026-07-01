@@ -3314,6 +3314,212 @@ def payslip_pdf_bytes(ps_data: dict[str, Any], mr_data: dict[str, Any], entity_n
     return bytes(pdf.output())
 
 
+def payslip_widget_html(lang: str, payslip_id: str, session_id: str = "", request_host: str = "127.0.0.1") -> str:
+    """Embed the Vue3 payslip widget inside the backend page layout.
+    The Vue app mounts into #payslip-widget and loads data via /api/payslip/view.
+    """
+    config = json.dumps({"payslip_id": payslip_id, "lang": lang, "session_id": session_id}, ensure_ascii=False)
+    # Dev mode: load from Vite dev server; Production: load built files
+    vue_dev = os.environ.get("VUE_PAYSLIP_DEV", "1") == "1"
+    if vue_dev:
+        vite_host = request_host if request_host not in ("127.0.0.1", "localhost", "::1") else "127.0.0.1"
+        scripts = f"""<script type="module" src="http://{vite_host}:5173/@vite/client"></script>
+<script type="module" src="http://{vite_host}:5173/src/main-payslip.js"></script>"""
+    else:
+        scripts = """<script type="module" src="/payslip-app/assets/main-payslip.js"></script>"""
+    return f"""<script>window.__PAYSLIP_CONFIG__ = {config};</script>
+<style>
+.payslip-container{{max-width:700px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC','Noto Sans JP',Arial,sans-serif;font-size:13px;color:#1a1a2e;line-height:1.5}}
+.payslip-header{{background:linear-gradient(135deg,#14213d 0%,#1a3a5c 100%);color:white;padding:24px 28px;border-radius:12px 12px 0 0}}
+.payslip-header h2{{margin:0 0 4px;font-size:20px;font-weight:850}}
+.payslip-header .subtitle{{opacity:.85;font-size:13px}}
+.payslip-body{{background:white;border:1px solid #e0e5ec;border-top:none;padding:24px 28px;border-radius:0 0 12px 12px}}
+.payslip-body h3{{font-size:14px;color:var(--navy);border-bottom:2px solid var(--blue);padding-bottom:6px;margin:18px 0 10px}}
+.payslip-body h3:first-child{{margin-top:0}}
+.payslip-info{{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin-bottom:16px;padding:12px 16px;background:#f8fafc;border-radius:8px}}
+.payslip-info .label{{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.03em}}
+.payslip-info .value{{font-weight:700;font-size:14px}}
+.payslip-table{{width:100%;border-collapse:collapse;margin:8px 0}}
+.payslip-table td{{padding:6px 12px;border-bottom:1px solid #f0f2f5}}
+.payslip-table .right{{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}}
+.payslip-table .total-row td{{font-weight:850;font-size:15px;border-top:2px solid var(--navy);padding-top:10px;color:var(--blue)}}
+.payslip-table .net-row td{{font-weight:850;font-size:18px;color:var(--green);padding:12px;background:#ecfdf5;border-radius:8px}}
+.payslip-footer{{margin-top:20px;text-align:center;color:var(--muted);font-size:11px;border-top:1px solid #e0e5ec;padding-top:14px}}
+@media print{{body{{background:white;margin:0;padding:0}}.site-header,.primary-nav,main>*:not(.payslip-container){{display:none!important}}.payslip-container{{max-width:100%;box-shadow:none}}.payslip-body{{border:none}}}}
+@media(max-width:760px){{.payslip-container{{max-width:100%}}.payslip-header{{padding:20px 18px}}.payslip-body{{padding:20px 18px}}.payslip-info{{grid-template-columns:1fr}}}}
+</style>
+<div id="payslip-widget"></div>
+{scripts}"""
+
+
+def payslip_json_view(lang: str, payslip_id: str) -> dict[str, Any]:
+    """Return payslip data as JSON for Vue3 frontend consumption."""
+    all_payslips = load_json(PAYSLIPS_PATH, [])
+    ps = next((p for p in all_payslips if p.get("payslip_id") == payslip_id), None)
+    if not ps:
+        return {"error": "Payslip not found.", "payslip_id": payslip_id}
+
+    # Load monthly record for full salary detail
+    monthly_records = load_monthly_records()
+    mr = next((r for r in monthly_records if r.get("record_id") == ps.get("record_id", "")), {})
+
+    # Load entity name
+    release_batches = load_release_batches()
+    release = next((rb for rb in release_batches if rb.get("release_id") == ps.get("release_id")), None)
+    entity_name = "TAC Alliance"
+    entity_full = entity_name
+    if release:
+        entity_full = entity_label(release.get("entity_id", ""), lang)
+        entity_name = entity_full.split(" - ")[-1].split(" (")[0] if " - " in entity_full else entity_full
+
+    currency = str(ps.get("currency") or mr.get("payroll_currency") or "SGD")
+
+    # Build earnings detail as structured data
+    earnings_items = []
+    salary_type = mr.get("salary_type", "monthly")
+    basic_salary = money(mr.get("basic_salary", 0))
+    hourly_rate = money(mr.get("hourly_rate", 0))
+    daily_rate = money(mr.get("daily_rate", 0))
+    overtime_rate = money(mr.get("overtime_hourly_rate", 0))
+    actual_hours = money(mr.get("actual_work_hours", 0))
+    actual_days = money(mr.get("actual_work_days", 0))
+    standard_hours = money(mr.get("standard_work_hours", 176))
+    standard_days = money(mr.get("standard_work_days", 22))
+    paid_leave = money(mr.get("paid_leave_days", 0))
+    sick_leave = money(mr.get("sick_leave_days", 0))
+    overtime_hours = money(mr.get("overtime_hours", 0))
+
+    position_allowance = money(mr.get("position_allowance", 0))
+    fixed_allowance = money(mr.get("fixed_allowance", 0))
+    housing_allowance = money(mr.get("housing_allowance", 0))
+    commute_allowance = money(mr.get("commute_allowance", 0))
+    performance_bonus = money(mr.get("performance_bonus", 0))
+    bonus = money(mr.get("bonus", 0))
+    other_payment = money(mr.get("other_payment", 0))
+    other_earnings = money(mr.get("other_earnings", 0))
+
+    # Build earnings
+    if salary_type == "monthly":
+        earnings_items.append({"label": "Basic Salary / 基本工资", "amount": basic_salary, "type": "salary"})
+        if position_allowance > 0:
+            earnings_items.append({"label": "Position Allowance / 岗位津贴", "amount": position_allowance, "type": "allowance"})
+        if fixed_allowance > 0:
+            earnings_items.append({"label": "Fixed Allowance / 固定津贴", "amount": fixed_allowance, "type": "allowance"})
+        if commute_allowance > 0:
+            earnings_items.append({"label": "Commute Allowance / 交通津贴", "amount": commute_allowance, "type": "allowance"})
+        if housing_allowance > 0:
+            earnings_items.append({"label": "Housing Allowance / 住房津贴", "amount": housing_allowance, "type": "allowance"})
+        if paid_leave > 0:
+            earnings_items.append({"label": "Paid Leave", "amount": paid_leave, "type": "leave", "days": paid_leave, "note": f"{paid_leave:.0f} days"})
+        if sick_leave > 0:
+            earnings_items.append({"label": "Sick Leave", "amount": sick_leave, "type": "leave", "days": sick_leave, "note": f"{sick_leave:.0f} days"})
+    elif salary_type == "hourly":
+        base_pay = round(hourly_rate * actual_hours, 2)
+        earnings_items.append({"label": "Hourly Rate × Hours", "amount": 0, "type": "info", "note": f"{hourly_rate:,.2f} × {actual_hours:.0f}h"})
+        earnings_items.append({"label": "Base Hourly Pay", "amount": base_pay, "type": "salary"})
+        if overtime_rate > 0:
+            ot_hours = max(0, actual_hours - standard_hours)
+            if ot_hours > 0:
+                ot_pay = round(overtime_rate * ot_hours, 2)
+                earnings_items.append({"label": "Overtime Pay", "amount": ot_pay, "type": "overtime", "note": f"{ot_hours:.0f}h × {overtime_rate:,.2f}"})
+    elif salary_type == "daily":
+        base_pay = round(daily_rate * actual_days, 2)
+        earnings_items.append({"label": "Daily Rate × Days", "amount": 0, "type": "info", "note": f"{daily_rate:,.2f} × {actual_days:.0f}d"})
+        earnings_items.append({"label": "Base Daily Pay", "amount": base_pay, "type": "salary"})
+    elif salary_type == "monthly_hour":
+        ratio = min(actual_hours / max(standard_hours, 1), 1.0)
+        monthly_part = round(basic_salary * ratio, 2)
+        earnings_items.append({"label": "Basic Salary (monthly portion)", "amount": monthly_part, "type": "salary"})
+        regular_hours = min(actual_hours, standard_hours)
+        hourly_part = round(hourly_rate * regular_hours, 2)
+        earnings_items.append({"label": "Hourly Pay (standard)", "amount": hourly_part, "type": "salary", "note": f"{regular_hours:.0f}h × {hourly_rate:,.2f}"})
+        if overtime_rate > 0:
+            ot_hours = max(0, actual_hours - standard_hours)
+            if ot_hours > 0:
+                ot_part = round(overtime_rate * ot_hours, 2)
+                earnings_items.append({"label": "Overtime Pay", "amount": ot_part, "type": "overtime", "note": f"{ot_hours:.0f}h × {overtime_rate:,.2f}"})
+
+    # Common extras
+    if salary_type != "monthly" and fixed_allowance > 0:
+        earnings_items.append({"label": "Fixed Allowance", "amount": fixed_allowance, "type": "allowance"})
+    earnings_items.append({"label": "Performance Bonus / 绩效奖金", "amount": performance_bonus, "type": "bonus"})
+    if bonus > 0:
+        earnings_items.append({"label": "Bonus / 奖金", "amount": bonus, "type": "bonus"})
+    earnings_items.append({"label": "Other Payment / 其他支付", "amount": other_payment, "type": "other"})
+    if other_earnings > 0:
+        earnings_items.append({"label": "Other Earnings", "amount": other_earnings, "type": "other"})
+
+    # Deductions
+    deduction_items = []
+    cpf_applicable = mr.get("cpf_applicable", False)
+    cpf_employee = money(mr.get("cpf_employee", 0))
+    income_tax = money(mr.get("income_tax", 0))
+    recurring_deductions = money(mr.get("recurring_deductions", 0))
+    other_deduction = money(mr.get("other_deduction", 0))
+    if cpf_applicable and cpf_employee > 0:
+        deduction_items.append({"label": "CPF Employee", "amount": cpf_employee, "type": "cpf"})
+    if income_tax > 0:
+        deduction_items.append({"label": "Income Tax", "amount": income_tax, "type": "tax"})
+    if recurring_deductions > 0:
+        deduction_items.append({"label": "Recurring Deductions", "amount": recurring_deductions, "type": "deduction"})
+    deduction_items.append({"label": "Other Deduction / 其他扣除", "amount": other_deduction, "type": "other"})
+
+    # Employer costs
+    employer_items = []
+    cpf_employer = money(mr.get("cpf_employer", 0))
+    sdl = money(mr.get("skill_development_levy", 0))
+    fwl = money(mr.get("foreign_worker_levy", 0))
+    if cpf_applicable and cpf_employer > 0:
+        employer_items.append({"label": "CPF Employer", "amount": cpf_employer, "type": "cpf"})
+    if sdl > 0:
+        employer_items.append({"label": "SDL (Skill Development Levy)", "amount": sdl, "type": "levy"})
+    if fwl > 0:
+        employer_items.append({"label": "FWL (Foreign Worker Levy)", "amount": fwl, "type": "levy"})
+
+    # Bank info
+    bank_info = None
+    bank_name = str(clean(mr.get("bank_name", "")))
+    bank_account = str(clean(mr.get("bank_account_number", "")))
+    if bank_name or bank_account:
+        bank_info = {
+            "bank_name": bank_name,
+            "bank_branch": str(clean(mr.get("bank_branch_name", ""))),
+            "bank_account": bank_account,
+            "bank_account_type": str(clean(mr.get("bank_account_type", ""))),
+        }
+
+    # PDF available
+    pdf_available = bool(ps.get("file_name"))
+
+    # Calculation messages for review visibility
+    calc_messages = mr.get("calculation_messages", [])
+
+    return {
+        "payslip_id": payslip_id,
+        "record_id": ps.get("record_id", ""),
+        "employee_name": str(ps.get("employee_name", "")),
+        "employee_number": str(ps.get("employee_number", "")),
+        "department": str(ps.get("department_label", "")),
+        "payroll_month": str(ps.get("payroll_month", "")),
+        "salary_type": salary_type,
+        "currency": currency,
+        "entity_name": entity_name,
+        "entity_full": entity_full,
+        "gross_pay": money(ps.get("gross_pay", 0)),
+        "deduction_total": money(ps.get("deduction_total", 0)),
+        "net_pay": money(ps.get("net_pay", 0)),
+        "employer_cost_total": money(mr.get("employer_cost_total", 0)),
+        "earnings": earnings_items,
+        "deductions": deduction_items,
+        "employer_costs": employer_items,
+        "bank_info": bank_info,
+        "pdf_available": pdf_available,
+        "status": str(ps.get("status", "")),
+        "calculation_messages": calc_messages,
+        "created_at": str(ps.get("created_at", "")),
+    }
+
+
 def payslip_html_view(lang: str, payslip_id: str) -> str:
     """Render an HTML payslip report with the same layout as the PDF version.
     HR can view this before/after PDF generation for verification.
@@ -5300,6 +5506,7 @@ label{{display:block;font-weight:800;margin-bottom:5px;color:#334155}} input,sel
 .modal-footer .btn-yes.default-yes{{box-shadow:0 0 0 4px rgba(10,110,209,.18);border-color:#085caf;outline:none}}
 .modal-footer .btn-no.default-no{{border-color:var(--blue);box-shadow:0 0 0 4px rgba(10,110,209,.18);color:var(--blue)}}
 .sticky-col{{position:sticky;z-index:2;box-shadow:2px 0 4px rgba(0,0,0,.06)}}
+.name-cell{{box-shadow:2px 0 6px rgba(0,0,0,.12)!important}}
 .missing-data td{{border-bottom-color:#F9A825!important}}
 .missing-data .sticky-col{{background:#FFF9C4!important}}
 </style>
@@ -7093,7 +7300,7 @@ def monthly_sheet_review_html(lang: str, sheet_id: str) -> str:
     if not records:
         tr_html = f"<p class='muted'>{t(lang,'msg.no_records')}</p>"
     else:
-        header_cells = "<th style='width:30px'><input type='checkbox' id='select-all' title='Select/Deselect All' style='width:auto;min-width:auto'></th><th>No.</th><th>Name</th><th>Dept</th><th>Team</th><th>Type</th><th>Basic<br>Salary</th><th>Hourly<br>Rate</th><th>Daily<br>Rate</th><th>Std Days</th>"
+        header_cells = "<th class='sticky-col' style='width:30px;left:0;z-index:4;background:#f1f5f9'><input type='checkbox' id='select-all' title='Select/Deselect All' style='width:auto;min-width:auto'></th><th class='sticky-col' style='left:34px;z-index:4;background:#f1f5f9'>No.</th><th class='sticky-col' style='left:114px;z-index:4;background:#f1f5f9'>Name</th><th>Dept</th><th>Team</th><th>Type</th><th>Basic<br>Salary</th><th>Hourly<br>Rate</th><th>Daily<br>Rate</th><th>Std Days</th>"
         # Section group headers with color-coded backgrounds
         group_header = ("<tr style='font-size:10px;text-align:center;font-weight:700;text-transform:uppercase;letter-spacing:.05em'>"
             "<td colspan='10' style='background:#fff;position:sticky;left:0;z-index:3'></td>"
@@ -7810,6 +8017,25 @@ class Handler(BaseHTTPRequestHandler):
             )
             self.send_json(503 if error else 200, {"error": error, "employees": []} if error else {"employees": employees})
             return
+        if path == "/api/payslip/view":
+            # Support session_id from query param for cross-origin Vue app access
+            session_id = clean((query.get("session_id") or [""])[0])
+            if session_id:
+                user = validate_user_admin_session(session_id, self.headers.get("Cookie", ""))
+                if not user or not has_permission(user, "tacaipay_sg.reports.view"):
+                    self.send_json(401, {"error": "Invalid session or insufficient permissions."})
+                    return
+            else:
+                user = self.require_user(lang, "tacaipay_sg.reports.view")
+                if not user:
+                    return
+            payslip_id = clean((query.get("payslip_id") or [""])[0])
+            data = payslip_json_view(lang, payslip_id)
+            if data.get("error"):
+                self.send_json(404, data)
+            else:
+                self.send_json(200, data)
+            return
         permission = {
             "/salary-master/new": "tacaipay_sg.manage",
             "/salary-master/edit": "tacaipay_sg.manage",
@@ -7941,7 +8167,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_page(lang, "Cost Report", cost_report_html(lang), user)
         elif path == "/payslip/view":
             payslip_id = clean((query.get("payslip_id") or [""])[0])
-            self.send_page(lang, "Payslip View", payslip_html_view(lang, payslip_id), user)
+            # Embed Vue3 payslip widget within the original page layout (same origin)
+            self.send_page(lang, "Payslip View", payslip_widget_html(lang, payslip_id, self.current_session_id(), self.request_host), user)
         elif path == "/payslip/download":
             payslip_id = clean((query.get("payslip_id") or [""])[0])
             all_payslips = load_json(PAYSLIPS_PATH, [])
@@ -8416,7 +8643,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_bytes(b"Payslip not found", status=404)
         elif path == "/payslip/view":
             payslip_id = clean((query.get("payslip_id") or [""])[0])
-            self.send_page(lang, "Payslip View", payslip_html_view(lang, payslip_id), user)
+            # Embed Vue3 payslip widget within the original page layout (same origin)
+            self.send_page(lang, "Payslip View", payslip_widget_html(lang, payslip_id, self.current_session_id(), self.request_host), user)
         else:
             self.send_bytes(b"Not found", status=404)
 
